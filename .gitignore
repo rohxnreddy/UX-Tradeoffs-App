@@ -1,0 +1,51 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+*.sublime-*
+
+# Build folders
+build/
+dist/
+out/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.*
+!.env.example
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+*.egg-info/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+
+# Debug output
+debugvideo/
+debug/
+
+
+# Temporary
+*.tmp
+*.temp
+*~
+*.swp
+
+
+
