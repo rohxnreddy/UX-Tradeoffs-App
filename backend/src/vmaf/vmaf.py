@@ -106,6 +106,57 @@ def save_debug_video(input_path: Path, start_time: float, crop_filter: str) -> N
         stderr_text = e.stderr.decode() if e.stderr else str(e)
         print(f"Warning: Could not save debug video. Error: {stderr_text}")
 
+# def save_side_by_side_debug(
+#     ref_path,
+#     dist_path,
+#     ref_start,
+#     dist_start,
+#     duration,
+#     crop_filter,
+#     output_path,
+# ):
+#     """Creates a side-by-side video of Reference vs Distorted to check sync."""
+
+#     output_path = Path(output_path)
+#     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+#     print(f"Generating sync check video: {output_path} ...")
+
+#     dist_chain = (
+#         f"[1:v]trim=start={dist_start}:duration={duration},setpts=PTS-STARTPTS"
+#     )
+
+#     if crop_filter and crop_filter != "null":
+#         dist_chain += f",{crop_filter}"
+
+#     dist_chain += ",scale=-1:720[dist_v]"
+
+#     filter_complex = (
+#         f"[0:v]trim=start={ref_start}:duration={duration},setpts=PTS-STARTPTS,scale=-1:720[ref_v];"
+#         f"{dist_chain};"
+#         f"[ref_v][dist_v]hstack=inputs=2[out_v]"
+#     )
+
+#     cmd = (
+#         f'ffmpeg -y '
+#         f'-i "{ref_path}" '
+#         f'-i "{dist_path}" '
+#         f'-t {duration} '
+#         f'-filter_complex "{filter_complex}" '
+#         f'-map "[out_v]" '
+#         f'"{output_path}"'
+#     )
+
+#     print("Running FFmpeg command:")
+#     print(cmd)
+
+#     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+#     if result.returncode != 0:
+#         print("❌ Failed to save debug video.")
+#         print(result.stderr)
+#     else:
+#         print(f"✅ Saved sync check video to: {output_path.resolve()}")      
 
 def compute_vmaf(
     distorted_video: str | Path,
@@ -134,6 +185,7 @@ def compute_vmaf(
 
 
     # save_debug_video(dist_path, dist_start, crop_filter)
+    # save_side_by_side_debug(ref_path, dist_path, ref_start, dist_start, seek_duration, crop_filter, DEBUG_DIR / "sync_check.mp4")
 
 
     with NamedTemporaryFile(suffix=".json", delete=False) as tmp:

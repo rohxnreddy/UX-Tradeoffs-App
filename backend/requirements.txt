@@ -5,3 +5,10 @@ psycopg[binary]>=3.3.2
 python-dotenv>=1.2.1
 python-multipart>=0.0.21
 uvicorn[standard]>=0.40.0
+pybrisque
+opencv-python
+scikit-image
+pyiqa
+torch
+numpy
+scipy

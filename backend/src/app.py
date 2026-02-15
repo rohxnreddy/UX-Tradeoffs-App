@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from src.vmaf.vmaf import compute_vmaf
+from src.IMA.IMA import compute_iqa
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,3 +45,30 @@ async def calculate_vmaf(
 
     finally:
         original_path.unlink(missing_ok=True)
+
+
+@app.post("/iqa/score")
+async def calculate_iqa(
+    image: UploadFile = File(...),
+):
+    contents = await image.read()
+    if not contents:
+        raise HTTPException(400, "Empty file uploaded")
+
+    suffix = Path(image.filename or "").suffix or ".jpg"
+
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(contents)
+        image_path = Path(tmp.name)
+
+    try:
+        scores = compute_iqa(image_path)
+
+        return {
+            "brisque": round(scores["brisque"], 2),
+            "niqe": round(scores["niqe"], 2),
+            "piqe": round(scores["piqe"], 2),
+        }
+
+    finally:
+        image_path.unlink(missing_ok=True)
