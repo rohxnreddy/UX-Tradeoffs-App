@@ -7,9 +7,9 @@ import 'package:flutter_screen_recording/flutter_screen_recording.dart';
 import 'package:video_player/video_player.dart';
 import 'package:http/http.dart' as http;
 
-
 class VmafPlayer extends StatefulWidget {
-  const VmafPlayer({super.key});
+  final VoidCallback? onMenuPressed;
+  const VmafPlayer({super.key, this.onMenuPressed});
 
   @override
   State<VmafPlayer> createState() => _VmafPlayerState();
@@ -37,9 +37,7 @@ class _VmafPlayerState extends State<VmafPlayer> {
   }
 
   Future<void> _initializePlayer() async {
-    _player = VideoPlayerController.asset(
-      "assets/video/reference.mp4",
-    );
+    _player = VideoPlayerController.asset("assets/video/reference.mp4");
 
     try {
       await _player.initialize();
@@ -77,9 +75,7 @@ class _VmafPlayerState extends State<VmafPlayer> {
   }
 
   Future<void> exitFullscreen() async {
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-    ]);
+    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     setState(() {
       isFullscreen = false;
@@ -104,16 +100,21 @@ class _VmafPlayerState extends State<VmafPlayer> {
 
       // Step 2: Start recording (permission will be requested here if not granted)
       setState(() {
-        statusMessage = "Starting recording (requesting permission if needed)...";
+        statusMessage =
+            "Starting recording (requesting permission if needed)...";
       });
 
-      bool started = await FlutterScreenRecording.startRecordScreen("vmaf_test");
+      bool started = await FlutterScreenRecording.startRecordScreen(
+        "vmaf_test",
+      );
 
       if (!started) {
         setState(() {
           hasRecordingPermission = false;
         });
-        throw Exception("Failed to start screen recording. Permission may have been denied.");
+        throw Exception(
+          "Failed to start screen recording. Permission may have been denied.",
+        );
       }
 
       // Permission was granted
@@ -173,7 +174,8 @@ class _VmafPlayerState extends State<VmafPlayer> {
 
       // Step 6: Upload to API
       setState(() {
-        statusMessage = "Uploading to API (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)...";
+        statusMessage =
+            "Uploading to API (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)...";
       });
 
       await sendToApi();
@@ -184,7 +186,6 @@ class _VmafPlayerState extends State<VmafPlayer> {
       });
 
       _showSuccessDialog();
-
     } catch (e, stackTrace) {
       print("Error: $e");
       print("Stack trace: $stackTrace");
@@ -261,27 +262,28 @@ class _VmafPlayerState extends State<VmafPlayer> {
             throw Exception("API response missing 'vmaf_score' field");
           }
         } catch (e) {
-          throw Exception("Failed to parse API response: $e\nResponse: $responseBody");
+          throw Exception(
+            "Failed to parse API response: $e\nResponse: $responseBody",
+          );
         }
       } else {
         throw Exception(
-            "API Error (${streamedResponse.statusCode}): $responseBody"
+          "API Error (${streamedResponse.statusCode}): $responseBody",
         );
       }
-
     } on SocketException catch (e) {
       throw Exception(
-          "Network error: Cannot connect to API server.\n"
-              "Make sure:\n"
-              "1. API server is running\n"
-              "2. Using correct IP (10.0.2.2 for Android emulator)\n"
-              "3. Firewall allows connections\n"
-              "Details: ${e.message}"
+        "Network error: Cannot connect to API server.\n"
+        "Make sure:\n"
+        "1. API server is running\n"
+        "2. Using correct IP (10.0.2.2 for Android emulator)\n"
+        "3. Firewall allows connections\n"
+        "Details: ${e.message}",
       );
     } on TimeoutException catch (_) {
       throw Exception(
-          "Request timed out. The API is taking too long to respond.\n"
-              "This may happen with large video files or slow processing."
+        "Request timed out. The API is taking too long to respond.\n"
+        "This may happen with large video files or slow processing.",
       );
     } catch (e) {
       rethrow;
@@ -299,9 +301,7 @@ class _VmafPlayerState extends State<VmafPlayer> {
             Text("Error"),
           ],
         ),
-        content: SingleChildScrollView(
-          child: Text(error),
-        ),
+        content: SingleChildScrollView(child: Text(error)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -340,7 +340,10 @@ class _VmafPlayerState extends State<VmafPlayer> {
                   children: [
                     const Text(
                       "VMAF Score",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -376,9 +379,9 @@ class _VmafPlayerState extends State<VmafPlayer> {
         body: Center(
           child: _player.value.isInitialized
               ? AspectRatio(
-            aspectRatio: _player.value.aspectRatio,
-            child: VideoPlayer(_player),
-          )
+                  aspectRatio: _player.value.aspectRatio,
+                  child: VideoPlayer(_player),
+                )
               : const CircularProgressIndicator(color: Colors.white),
         ),
       );
@@ -387,6 +390,12 @@ class _VmafPlayerState extends State<VmafPlayer> {
     // Normal portrait mode UI
     return Scaffold(
       appBar: AppBar(
+        leading: widget.onMenuPressed != null
+            ? IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: widget.onMenuPressed,
+              )
+            : null,
         title: const Text("VMAF Test Player"),
         actions: [
           IconButton(
@@ -432,9 +441,7 @@ class _VmafPlayerState extends State<VmafPlayer> {
                       color: Colors.grey.shade200,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Center(
-                      child: CircularProgressIndicator(),
-                    ),
+                    child: const Center(child: CircularProgressIndicator()),
                   ),
 
                 const SizedBox(height: 20),
@@ -443,7 +450,9 @@ class _VmafPlayerState extends State<VmafPlayer> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: isProcessing ? Colors.blue.shade50 : Colors.grey.shade100,
+                    color: isProcessing
+                        ? Colors.blue.shade50
+                        : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: isProcessing ? Colors.blue : Colors.grey.shade300,
@@ -551,34 +560,39 @@ class _VmafPlayerState extends State<VmafPlayer> {
                     ),
                     child: isProcessing
                         ? const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          "Processing...",
-                          style: TextStyle(fontSize: 18),
-                        ),
-                      ],
-                    )
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 12),
+                              Text(
+                                "Processing...",
+                                style: TextStyle(fontSize: 18),
+                              ),
+                            ],
+                          )
                         : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.play_circle_outline, size: 24),
-                        SizedBox(width: 8),
-                        Text(
-                          "Start VMAF Test",
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.play_circle_outline, size: 24),
+                              SizedBox(width: 8),
+                              Text(
+                                "Start VMAF Test",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
                 ),
 
@@ -588,11 +602,16 @@ class _VmafPlayerState extends State<VmafPlayer> {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: isProcessing ? null : () => _showRecordedVideo(),
+                      onPressed: isProcessing
+                          ? null
+                          : () => _showRecordedVideo(),
                       icon: const Icon(Icons.play_arrow),
                       label: const Text(
                         "View Recorded Video",
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -619,12 +638,19 @@ class _VmafPlayerState extends State<VmafPlayer> {
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.videocam, size: 16, color: Colors.grey),
+                              const Icon(
+                                Icons.videocam,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   recordedPath!.split('/').last,
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -638,11 +664,18 @@ class _VmafPlayerState extends State<VmafPlayer> {
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.storage, size: 16, color: Colors.grey),
+                                      const Icon(
+                                        Icons.storage,
+                                        size: 16,
+                                        color: Colors.grey,
+                                      ),
                                       const SizedBox(width: 8),
                                       Text(
                                         "Size: ${(snapshot.data! / 1024 / 1024).toStringAsFixed(2)} MB",
-                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -754,7 +787,9 @@ class _VmafPlayerState extends State<VmafPlayer> {
     if (recordedPath == null) return;
 
     // Create a new video player for the recorded video
-    final recordedVideoController = VideoPlayerController.file(File(recordedPath!));
+    final recordedVideoController = VideoPlayerController.file(
+      File(recordedPath!),
+    );
 
     showDialog(
       context: context,
@@ -809,7 +844,8 @@ class _RecordedVideoPlayerState extends State<RecordedVideoPlayer> {
 
       // Listen for video end
       widget.controller.addListener(() {
-        if (widget.controller.value.position >= widget.controller.value.duration) {
+        if (widget.controller.value.position >=
+            widget.controller.value.duration) {
           setState(() {
             _isPlaying = false;
           });
@@ -879,74 +915,72 @@ class _RecordedVideoPlayerState extends State<RecordedVideoPlayer> {
               color: Colors.black,
               child: _error != null
                   ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    "Error loading video:\n$_error",
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              )
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          "Error loading video:\n$_error",
+                          style: const TextStyle(color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    )
                   : !_isInitialized
                   ? const Center(
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                ),
-              )
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
                   : Stack(
-                alignment: Alignment.center,
-                children: [
-                  AspectRatio(
-                    aspectRatio: widget.controller.value.aspectRatio,
-                    child: VideoPlayer(widget.controller),
-                  ),
-                  // Play/Pause overlay
-                  GestureDetector(
-                    onTap: _togglePlayPause,
-                    child: Container(
-                      color: Colors.transparent,
-                      child: Center(
-                        child: AnimatedOpacity(
-                          opacity: _isPlaying ? 0.0 : 1.0,
-                          duration: const Duration(milliseconds: 300),
+                      alignment: Alignment.center,
+                      children: [
+                        AspectRatio(
+                          aspectRatio: widget.controller.value.aspectRatio,
+                          child: VideoPlayer(widget.controller),
+                        ),
+                        // Play/Pause overlay
+                        GestureDetector(
+                          onTap: _togglePlayPause,
                           child: Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              _isPlaying ? Icons.pause : Icons.play_arrow,
-                              size: 64,
-                              color: Colors.white,
+                            color: Colors.transparent,
+                            child: Center(
+                              child: AnimatedOpacity(
+                                opacity: _isPlaying ? 0.0 : 1.0,
+                                duration: const Duration(milliseconds: 300),
+                                child: Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    _isPlaying ? Icons.pause : Icons.play_arrow,
+                                    size: 64,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                        // Video progress indicator
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          child: VideoProgressIndicator(
+                            widget.controller,
+                            allowScrubbing: true,
+                            colors: const VideoProgressColors(
+                              playedColor: Colors.blue,
+                              bufferedColor: Colors.grey,
+                              backgroundColor: Colors.white24,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                              horizontal: 16,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  // Video progress indicator
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: VideoProgressIndicator(
-                      widget.controller,
-                      allowScrubbing: true,
-                      colors: const VideoProgressColors(
-                        playedColor: Colors.blue,
-                        bufferedColor: Colors.grey,
-                        backgroundColor: Colors.white24,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 16,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
 
