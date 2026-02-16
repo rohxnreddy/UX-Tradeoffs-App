@@ -43,3 +43,82 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+
+# ========================
+# Flutter / Dart / Build
+# ========================
+.dart_tool/
+.packages
+.pub/
+build/
+
+# Flutter plugin registrant
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Generated files
+generated_plugin_registrant.dart
+
+# ========================
+# IDE files
+# ========================
+
+# VS Code
+.vscode/
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+
+# Xcode
+*.xcworkspace
+*.xcuserstate
+*.xcuserdata/
+
+# ========================
+# macOS
+# ========================
+.DS_Store
+
+# ========================
+# Logs
+# ========================
+*.log
+
+# ========================
+# FVM (Flutter Version Manager)
+# ========================
+.fvm/
+
+# ========================
+# Environment files
+# ========================
+.env
+
+# ========================
+# Android
+# ========================
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# ========================
+# iOS
+# ========================
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/App.framework
+
+# ========================
+# Coverage
+# ========================
+coverage/
+
+# ========================
+# Temporary files
+# ========================
+*.tmp
+*.swp
