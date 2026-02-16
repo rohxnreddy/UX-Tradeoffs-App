@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:frontend/vmaf/vmaf.dart';
 import 'package:frontend/peaq/peaq_test.dart';
 import 'package:frontend/pesq/pesq_test.dart';
+import 'package:frontend/IQA/IQA.dart';
 
 void main() {
   runApp(const MyApp());
@@ -61,6 +62,11 @@ class _HomeNavState extends State<HomeNav> {
             title: 'PESQ — Speech Quality',
             icon: Icons.record_voice_over_outlined,
             body: const PesqTestScreen(),
+          ),
+          _buildPageScaffold(
+            title: 'IQA — Image Quality',
+            icon: Icons.image_outlined,
+            body: const IQAPage(),
           ),
         ],
       ),
@@ -137,6 +143,12 @@ class _HomeNavState extends State<HomeNav> {
             title: 'PESQ',
             subtitle: 'Speech Quality Assessment',
             index: 2,
+          ),
+          _buildDrawerItem(
+            icon: Icons.image_outlined,
+            title: 'IQA',
+            subtitle: 'Image Quality Assessment',
+            index: 3,
           ),
         ],
       ),

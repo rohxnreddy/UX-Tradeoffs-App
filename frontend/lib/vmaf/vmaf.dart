@@ -24,7 +24,7 @@ class _VmafPlayerState extends State<VmafPlayer> {
   double? vmafScore;
   String statusMessage = "Ready to start test";
 
-  String apiUrl = "http://10.0.2.2:8000/vmaf/score";
+  String apiUrl = "http://192.168.0.102:8000/vmaf/score";
 
   @override
   void initState() {

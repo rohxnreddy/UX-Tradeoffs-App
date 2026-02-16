@@ -11,6 +11,7 @@ from src.vmaf.vmaf import compute_vmaf
 from src.peaq.peaq import compute_peaq_odg, PEAQError
 from src.pesq_module.pesq_score import compute_pesq, compute_pesq_comparison, PESQError
 from src.webrtc.codec_call import make_webrtc_call, make_device_webrtc_call
+from src.IMA.IMA import compute_iqa
 
 # Audio files directory
 AUDIO_DIR = Path(__file__).resolve().parent.parent / "peaq-pesq-audio"
@@ -214,3 +215,32 @@ async def webrtc_device_call(
         raise HTTPException(500, f"WebRTC device call failed: {e}")
     finally:
         rec_path.unlink(missing_ok=True)
+
+
+# ─── IQA ──────────────────────────────────────────────────────────
+
+@app.post("/iqa/score")
+async def calculate_iqa(
+    image: UploadFile = File(...),
+):
+    contents = await image.read()
+    if not contents:
+        raise HTTPException(400, "Empty file uploaded")
+
+    suffix = Path(image.filename or "").suffix or ".jpg"
+
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(contents)
+        image_path = Path(tmp.name)
+
+    try:
+        scores = compute_iqa(image_path)
+
+        return {
+            "brisque": round(scores["brisque"], 2),
+            "niqe": round(scores["niqe"], 2),
+            "piqe": round(scores["piqe"], 2),
+        }
+
+    finally:
+        image_path.unlink(missing_ok=True)
