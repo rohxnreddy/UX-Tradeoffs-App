@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 
 class IQAPage extends StatefulWidget {
-  const IQAPage({Key? key}) : super(key: key);
+  const IQAPage({super.key});
 
   @override
   State<IQAPage> createState() => _IQAPageState();
@@ -22,8 +22,10 @@ class _IQAPageState extends State<IQAPage> {
   double? _piqe;
 
   Future<void> _captureAndSend() async {
-    final XFile? photo =
-    await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    final XFile? photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 85,
+    );
 
     if (photo == null) return;
 
@@ -73,8 +75,7 @@ class _IQAPageState extends State<IQAPage> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   // ---------- QUALITY LABELS ----------
@@ -137,9 +138,7 @@ class _IQAPageState extends State<IQAPage> {
 
     return Card(
       elevation: 3,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -147,8 +146,7 @@ class _IQAPageState extends State<IQAPage> {
           children: [
             Text(
               title,
-              style:
-              const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 6),
@@ -183,10 +181,7 @@ class _IQAPageState extends State<IQAPage> {
               lowerIsBetter
                   ? "Lower score = Better quality"
                   : "Higher score = Better quality",
-              style: const TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-              ),
+              style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
             ),
           ],
         ),
@@ -225,7 +220,7 @@ class _IQAPageState extends State<IQAPage> {
                   title: "BRISQUE",
                   value: _brisque,
                   description:
-                  "BRISQUE measures natural scene statistics distortion without a reference image.",
+                      "BRISQUE measures natural scene statistics distortion without a reference image.",
                   rangeInfo: "Typical range: 0–100",
                   lowerIsBetter: true,
                 ),
@@ -234,7 +229,7 @@ class _IQAPageState extends State<IQAPage> {
                   title: "NIQE",
                   value: _niqe,
                   description:
-                  "NIQE evaluates deviation from statistical regularities of natural images.",
+                      "NIQE evaluates deviation from statistical regularities of natural images.",
                   rangeInfo: "Typical range: 0–10",
                   lowerIsBetter: true,
                 ),
@@ -243,7 +238,7 @@ class _IQAPageState extends State<IQAPage> {
                   title: "PIQE",
                   value: _piqe,
                   description:
-                  "PIQE estimates perceptual image quality using block distortion analysis.",
+                      "PIQE estimates perceptual image quality using block distortion analysis.",
                   rangeInfo: "Typical range: 0–100",
                   lowerIsBetter: true,
                 ),

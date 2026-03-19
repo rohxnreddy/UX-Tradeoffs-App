@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
+import '../session_manager.dart';
 
 class PeaqTestScreen extends StatefulWidget {
   const PeaqTestScreen({super.key});
@@ -24,17 +25,23 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
   String statusMessage = "Ready to start audio test";
   double progress = 0.0;
   double? odgScore;
+  double? rawOdg;
+  double? wienerOdg;
+  double? ffmpegOdg;
   Map<String, dynamic>? resultDetails;
 
   // Local file paths for recorded/received audio
   String? _roomNoisePath;
   String? _degradedAudioPath;
   String? _subtractedAudioPath;
+  String? _ffmpegAudioPath;
 
   // Playback state tracking
-  int? _currentlyPlayingIndex; // 0=noise, 1=degraded, 2=subtracted
+  int? _currentlyPlayingIndex; // 0=noise, 1=degraded, 2=subtracted, 3=ffmpeg
 
-  String apiBaseUrl = "http://172.20.10.2:8000";
+  String get apiBaseUrl => SessionManager().hasSession
+      ? SessionManager().apiBaseUrl
+      : "https://shaggiest-graciously-chantell.ngrok-free.dev";
 
   @override
   void initState() {
@@ -239,6 +246,12 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
         );
       }
 
+      // Attach session ID for auto-logging
+      final session = SessionManager();
+      if (session.hasSession) {
+        request.fields['session_id'] = session.sessionId!;
+      }
+
       setState(() {
         statusMessage =
             "Analyzing audio quality...\nPerforming spectral subtraction & scoring.";
@@ -265,12 +278,30 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
           await File(subtractedPath).writeAsBytes(subtractedBytes);
         }
 
+        // Save FFmpeg-denoised audio if present
+        String? ffmpegPath;
+        if (data["ffmpeg_audio_b64"] != null) {
+          final ffmpegBytes = base64Decode(data["ffmpeg_audio_b64"] as String);
+          ffmpegPath = '${tempDir.path}/ffmpeg_denoised.wav';
+          await File(ffmpegPath).writeAsBytes(ffmpegBytes);
+        }
+
         setState(() {
           odgScore = (data["odg_score"] as num).toDouble();
+          rawOdg = data["raw_odg"] != null
+              ? (data["raw_odg"] as num).toDouble()
+              : null;
+          wienerOdg = data["wiener_odg"] != null
+              ? (data["wiener_odg"] as num).toDouble()
+              : null;
+          ffmpegOdg = data["ffmpeg_odg"] != null
+              ? (data["ffmpeg_odg"] as num).toDouble()
+              : null;
           resultDetails = data["details"] != null
               ? Map<String, dynamic>.from(data["details"])
               : null;
           _subtractedAudioPath = subtractedPath;
+          _ffmpegAudioPath = ffmpegPath;
           statusMessage = "Test completed!";
           progress = 1.0;
           isProcessing = false;
@@ -335,9 +366,8 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              setState(() {
-                apiBaseUrl = controller.text.trim();
-              });
+              SessionManager().setApiBaseUrl(controller.text.trim());
+              setState(() {});
               Navigator.pop(context);
             },
             child: const Text("Save"),
@@ -448,7 +478,8 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
               // ── Audio Playback Section ──────────────────────
               if (_roomNoisePath != null ||
                   _degradedAudioPath != null ||
-                  _subtractedAudioPath != null)
+                  _subtractedAudioPath != null ||
+                  _ffmpegAudioPath != null)
                 Container(
                   padding: const EdgeInsets.all(16),
                   margin: const EdgeInsets.only(bottom: 24),
@@ -503,10 +534,22 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
                         _buildPlaybackTile(
                           index: 2,
                           path: _subtractedAudioPath!,
-                          title: "Subtracted Audio",
-                          subtitle: "After spectral noise subtraction",
+                          title: "Wiener Subtracted",
+                          subtitle: "Custom spectral noise subtraction",
                           icon: Icons.auto_fix_high,
                           color: Colors.green,
+                        ),
+                      ],
+                      if (_ffmpegAudioPath != null) ...[
+                        const SizedBox(height: 8),
+                        _buildPlaybackTile(
+                          index: 3,
+                          path: _ffmpegAudioPath!,
+                          title: "FFmpeg Denoised",
+                          subtitle:
+                              "FFmpeg afftdn filter (auto noise estimate)",
+                          icon: Icons.graphic_eq,
+                          color: Colors.purple,
                         ),
                       ],
                     ],
@@ -519,37 +562,19 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
                   padding: const EdgeInsets.all(20),
                   margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        _getOdgColor(odgScore!).withValues(alpha: 0.1),
-                        _getOdgColor(odgScore!).withValues(alpha: 0.2),
-                      ],
-                    ),
+                    color: Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _getOdgColor(odgScore!),
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _getOdgColor(odgScore!).withValues(alpha: 0.3),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    border: Border.all(color: Colors.grey.shade300),
                   ),
                   child: Column(
                     children: [
-                      Row(
+                      const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            Icons.music_note,
-                            color: _getOdgColor(odgScore!),
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            "PEAQ ODG Score",
+                          Icon(Icons.music_note, color: Colors.blueGrey),
+                          SizedBox(width: 8),
+                          Text(
+                            "PEAQ ODG Scores",
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -557,26 +582,71 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 16),
+                      // Comparison row
+                      if (rawOdg != null ||
+                          wienerOdg != null ||
+                          ffmpegOdg != null)
+                        Row(
+                          children: [
+                            if (rawOdg != null)
+                              Expanded(
+                                child: _buildScoreCard(
+                                  "Raw",
+                                  rawOdg!,
+                                  Colors.orange,
+                                  Icons.speaker,
+                                ),
+                              ),
+                            if (rawOdg != null && wienerOdg != null)
+                              const SizedBox(width: 8),
+                            if (wienerOdg != null)
+                              Expanded(
+                                child: _buildScoreCard(
+                                  "Wiener",
+                                  wienerOdg!,
+                                  Colors.green,
+                                  Icons.auto_fix_high,
+                                ),
+                              ),
+                            if (ffmpegOdg != null) ...[
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildScoreCard(
+                                  "FFmpeg",
+                                  ffmpegOdg!,
+                                  Colors.purple,
+                                  Icons.graphic_eq,
+                                ),
+                              ),
+                            ],
+                          ],
+                        )
+                      else
+                        // Single score (no noise reduction)
+                        Column(
+                          children: [
+                            Text(
+                              odgScore!.toStringAsFixed(2),
+                              style: TextStyle(
+                                fontSize: 48,
+                                fontWeight: FontWeight.bold,
+                                color: _getOdgColor(odgScore!),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _getOdgDescription(odgScore!),
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
                       const SizedBox(height: 12),
                       Text(
-                        odgScore!.toStringAsFixed(2),
-                        style: TextStyle(
-                          fontSize: 48,
-                          fontWeight: FontWeight.bold,
-                          color: _getOdgColor(odgScore!),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _getOdgDescription(odgScore!),
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "Scale: -4.0 (very annoying) to 0.0 (imperceptible)",
+                        "Scale: -4.0 (very annoying) → 0.0 (imperceptible)",
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade500,
@@ -699,6 +769,51 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
         ),
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      ),
+    );
+  }
+
+  Widget _buildScoreCard(
+    String label,
+    double score,
+    Color color,
+    IconData icon,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            score.toStringAsFixed(2),
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            _getOdgDescription(score),
+            style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:frontend/vmaf/vmaf.dart';
 import 'package:frontend/peaq/peaq_test.dart';
 import 'package:frontend/pesq/pesq_test.dart';
 import 'package:frontend/IQA/IQA.dart';
+import 'session_manager.dart';
 
 void main() {
   runApp(const MyApp());
@@ -150,8 +151,91 @@ class _HomeNavState extends State<HomeNav> {
             subtitle: 'Image Quality Assessment',
             index: 3,
           ),
+          const Divider(),
+          // Session management
+          _buildSessionTile(),
         ],
       ),
+    );
+  }
+
+  Widget _buildSessionTile() {
+    final session = SessionManager();
+    return Column(
+      children: [
+        if (session.hasSession)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.green.shade300),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.phone_android,
+                  color: Colors.green.shade700,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        session.phoneModel ?? "Unknown",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      Text(
+                        "Session: ${session.sessionId}",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () {
+                    session.clearSession();
+                    setState(() {});
+                  },
+                  tooltip: "End session",
+                ),
+              ],
+            ),
+          ),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context); // close drawer
+              final success = await SessionManager.showSessionDialog(context);
+              if (success) setState(() {});
+            },
+            icon: Icon(session.hasSession ? Icons.refresh : Icons.play_arrow),
+            label: Text(
+              session.hasSession ? "New Session" : "Start Test Session",
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.teal,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

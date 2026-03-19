@@ -12,6 +12,7 @@ from src.peaq.peaq import compute_peaq_odg, PEAQError
 from src.pesq_module.pesq_score import compute_pesq, compute_pesq_comparison, PESQError
 from src.webrtc.codec_call import make_webrtc_call, make_device_webrtc_call
 from src.IMA.IMA import compute_iqa
+from src.sessions import create_session, log_result, get_all_results, get_csv_path
 
 # Audio files directory
 AUDIO_DIR = Path(__file__).resolve().parent.parent / "peaq-pesq-audio"
@@ -19,7 +20,11 @@ AUDIO_DIR = Path(__file__).resolve().parent.parent / "peaq-pesq-audio"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await create_db_and_tables()
+    try:
+        await create_db_and_tables()
+    except Exception as e:
+        print(f"⚠️  Database connection failed (non-critical): {e}")
+        print("   Server will start without database. Audio/video features still work.")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -28,6 +33,54 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/")
 def init():
     return {"message": "Server is Up!"}
+
+
+# ─── Sessions ─────────────────────────────────────────────────────
+
+@app.post("/sessions/create")
+async def create_test_session(
+    phone_model: str = Form(...),
+    tester_name: str = Form(""),
+):
+    """Create a new test session for a phone. Returns a short session ID."""
+    session = create_session(phone_model, tester_name)
+    return session
+
+
+@app.post("/sessions/{session_id}/log")
+async def log_test_result(
+    session_id: str,
+    test_type: str = Form(...),
+    results: str = Form(...),
+    notes: str = Form(""),
+):
+    """Manually log a test result for a session."""
+    import json
+    try:
+        results_dict = json.loads(results)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON in results field")
+    row = log_result(session_id, test_type, results_dict, notes)
+    return {"status": "logged", "row": row}
+
+
+@app.get("/sessions/results")
+async def get_results():
+    """Get all logged results as JSON."""
+    return {"results": get_all_results()}
+
+
+@app.get("/sessions/export")
+async def export_results():
+    """Download the results CSV file."""
+    csv_path = get_csv_path()
+    if not csv_path.exists():
+        raise HTTPException(404, "No results logged yet")
+    return FileResponse(
+        path=str(csv_path),
+        media_type="text/csv",
+        filename="test_results.csv",
+    )
 
 
 # ─── VMAF ─────────────────────────────────────────────────────────
@@ -91,6 +144,7 @@ async def stream_pesq_audio():
 async def calculate_peaq(
     degraded_audio: UploadFile = File(...),
     room_noise: UploadFile | None = File(None),
+    session_id: str | None = Form(None),
 ):
     """
     Compute PEAQ ODG score.
@@ -118,6 +172,16 @@ async def calculate_peaq(
 
     try:
         result = compute_peaq_odg(deg_path, noise_audio=noise_path)
+
+        # Auto-log if session provided
+        if session_id:
+            log_result(session_id, "peaq", {
+                "raw_odg": result.get("raw_odg", ""),
+                "wiener_odg": result.get("wiener_odg", ""),
+                "ffmpeg_odg": result.get("ffmpeg_odg", ""),
+                "lsd": result.get("lsd", ""),
+            })
+
         return result
     except PEAQError as e:
         raise HTTPException(500, f"PEAQ computation failed: {e}")
@@ -188,12 +252,13 @@ async def webrtc_call():
 @app.post("/webrtc/device-call")
 async def webrtc_device_call(
     recorded_audio: UploadFile = File(...),
+    session_id: str | None = Form(None),
 ):
     """
     Process a phone's mic recording through actual WebRTC codecs.
     The phone records reference speech through speaker → mic, uploads
-    the recording, and the backend applies Opus and G.711 codec
-    processing before computing PESQ scores.
+    the recording, and the backend applies Opus, G.711, and AMR-WB
+    codec processing before computing PESQ scores.
 
     Results vary by device because each phone's speaker/mic quality
     contributes to the degradation.
@@ -210,6 +275,16 @@ async def webrtc_device_call(
 
     try:
         result = make_device_webrtc_call(rec_path)
+
+        # Auto-log PESQ scores if session provided
+        if session_id:
+            log_result(session_id, "pesq", {
+                "direct": result.get("direct_recording", {}).get("pesq_score", ""),
+                "pstn": result.get("traditional_narrowband", {}).get("pesq_score", ""),
+                "volte": result.get("volte_wideband", {}).get("pesq_score", ""),
+                "voip": result.get("voip_wideband", {}).get("pesq_score", ""),
+            })
+
         return result
     except Exception as e:
         raise HTTPException(500, f"WebRTC device call failed: {e}")

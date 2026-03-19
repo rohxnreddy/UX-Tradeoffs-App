@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
+import '../session_manager.dart';
 
 class PesqTestScreen extends StatefulWidget {
   const PesqTestScreen({super.key});
@@ -28,11 +29,14 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
   String? _webrtcRefPath;
   String? _webrtcWbPath;
   String? _webrtcNbPath;
+  String? _webrtcVoltePath;
 
   // Playback tracking
   int? _currentlyPlayingIndex;
 
-  String apiBaseUrl = "http://172.20.10.2:8000";
+  String get apiBaseUrl => SessionManager().hasSession
+      ? SessionManager().apiBaseUrl
+      : "https://shaggiest-graciously-chantell.ngrok-free.dev";
 
   @override
   void initState() {
@@ -147,7 +151,7 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
 
       // Step 3: Upload recording to WebRTC device-call endpoint
       setState(() {
-        statusMessage = "📞 Processing through WebRTC codecs (Opus & G.711)...";
+        statusMessage = "📞 Processing through codecs (Opus, G.711, AMR-WB)...";
         progress = 0.6;
       });
 
@@ -167,6 +171,12 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
           filename: 'webrtc_recording.wav',
         ),
       );
+
+      // Attach session ID for auto-logging
+      final session = SessionManager();
+      if (session.hasSession) {
+        request.fields['session_id'] = session.sessionId!;
+      }
 
       setState(() {
         statusMessage =
@@ -201,6 +211,14 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
           final path = '${tempDir.path}/webrtc_nb.wav';
           await File(path).writeAsBytes(bytes);
           _webrtcNbPath = path;
+        }
+        if (data["volte_degraded_audio_b64"] != null) {
+          final bytes = base64Decode(
+            data["volte_degraded_audio_b64"] as String,
+          );
+          final path = '${tempDir.path}/webrtc_volte.wav';
+          await File(path).writeAsBytes(bytes);
+          _webrtcVoltePath = path;
         }
 
         setState(() {
@@ -258,9 +276,8 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              setState(() {
-                apiBaseUrl = controller.text.trim();
-              });
+              SessionManager().setApiBaseUrl(controller.text.trim());
+              setState(() {});
               Navigator.pop(context);
             },
             child: const Text("Save"),
@@ -445,10 +462,12 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
   Widget _buildWebRTCCard() {
     final voip = webrtcResult?["voip_wideband"];
     final trad = webrtcResult?["traditional_narrowband"];
+    final volte = webrtcResult?["volte_wideband"];
     final direct = webrtcResult?["direct_recording"];
 
     final voipScore = voip?["pesq_score"] as num?;
     final tradScore = trad?["pesq_score"] as num?;
+    final volteScore = volte?["pesq_score"] as num?;
     final directScore = direct?["pesq_score"] as num?;
 
     return Container(
@@ -534,7 +553,8 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
           // Playback buttons
           if (_webrtcRefPath != null ||
               _webrtcWbPath != null ||
-              _webrtcNbPath != null)
+              _webrtcNbPath != null ||
+              _webrtcVoltePath != null)
             Container(
               padding: const EdgeInsets.all(12),
               margin: const EdgeInsets.only(bottom: 16),
@@ -591,12 +611,25 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                       color: Colors.green,
                     ),
                   ],
+                  if (_webrtcVoltePath != null) ...[
+                    const SizedBox(height: 6),
+                    _buildPlaybackTile(
+                      index: 33,
+                      path: _webrtcVoltePath!,
+                      title: "VoLTE Call (AMR-WB)",
+                      subtitle: "16 kHz wideband — 50-7000 Hz",
+                      icon: Icons.signal_cellular_alt,
+                      color: Colors.purple,
+                    ),
+                  ],
                 ],
               ),
             ),
 
           // Codec info chips
-          if (voip?["codec"] != null || trad?["codec"] != null)
+          if (voip?["codec"] != null ||
+              trad?["codec"] != null ||
+              volte?["codec"] != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Wrap(
@@ -613,6 +646,15 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                       ),
                       backgroundColor: Colors.orange.shade50,
                     ),
+                  if (volte?["codec"] != null)
+                    Chip(
+                      avatar: const Icon(Icons.signal_cellular_alt, size: 16),
+                      label: Text(
+                        "${volte!['codec']}",
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      backgroundColor: Colors.purple.shade50,
+                    ),
                   if (voip?["codec"] != null)
                     Chip(
                       avatar: const Icon(Icons.wifi_calling_3, size: 16),
@@ -626,12 +668,12 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
               ),
             ),
 
-          // Score comparison
+          // Score comparison — 3 columns: PSTN vs VoLTE vs VoIP
           Row(
             children: [
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: Colors.orange.shade50,
                     borderRadius: BorderRadius.circular(8),
@@ -640,26 +682,26 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                   child: Column(
                     children: [
                       const Text(
-                        "PSTN Call",
+                        "PSTN",
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                          fontSize: 12,
                         ),
                       ),
                       Text(
-                        "G.711 μ-law",
+                        "G.711",
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10,
                           color: Colors.grey.shade600,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       Text(
                         tradScore != null
                             ? tradScore.toStringAsFixed(2)
                             : "N/A",
                         style: TextStyle(
-                          fontSize: 32,
+                          fontSize: 26,
                           fontWeight: FontWeight.bold,
                           color: tradScore != null
                               ? _getPesqColor(tradScore.toDouble())
@@ -669,23 +711,65 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                       if (tradScore != null)
                         Text(
                           _getPesqDescription(tradScore.toDouble()),
-                          style: const TextStyle(fontSize: 11),
+                          style: const TextStyle(fontSize: 9),
                           textAlign: TextAlign.center,
                         ),
                     ],
                   ),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  "vs",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ),
+              const SizedBox(width: 6),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.purple),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        "VoLTE",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        "AMR-WB",
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        volteScore != null
+                            ? volteScore.toStringAsFixed(2)
+                            : "N/A",
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: volteScore != null
+                              ? _getPesqColor(volteScore.toDouble())
+                              : Colors.grey,
+                        ),
+                      ),
+                      if (volteScore != null)
+                        Text(
+                          _getPesqDescription(volteScore.toDouble()),
+                          style: const TextStyle(fontSize: 9),
+                          textAlign: TextAlign.center,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: Colors.green.shade50,
                     borderRadius: BorderRadius.circular(8),
@@ -694,26 +778,26 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                   child: Column(
                     children: [
                       const Text(
-                        "VoIP Call",
+                        "VoIP",
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                          fontSize: 12,
                         ),
                       ),
                       Text(
-                        "Opus codec",
+                        "Opus",
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10,
                           color: Colors.grey.shade600,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       Text(
                         voipScore != null
                             ? voipScore.toStringAsFixed(2)
                             : "N/A",
                         style: TextStyle(
-                          fontSize: 32,
+                          fontSize: 26,
                           fontWeight: FontWeight.bold,
                           color: voipScore != null
                               ? _getPesqColor(voipScore.toDouble())
@@ -723,7 +807,7 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                       if (voipScore != null)
                         Text(
                           _getPesqDescription(voipScore.toDouble()),
-                          style: const TextStyle(fontSize: 11),
+                          style: const TextStyle(fontSize: 9),
                           textAlign: TextAlign.center,
                         ),
                     ],
@@ -732,7 +816,7 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
               ),
             ],
           ),
-          if (voipScore != null && tradScore != null) ...[
+          if (voipScore != null && tradScore != null && volteScore != null) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(8),
@@ -741,10 +825,11 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                "VoIP (Opus) shows ${((voipScore - tradScore) / tradScore * 100).toStringAsFixed(1)}% "
-                "${voipScore > tradScore ? 'better' : 'worse'} quality than PSTN (G.711)",
+                "Quality: PSTN < VoLTE < VoIP\n"
+                "VoLTE shows ${((volteScore - tradScore) / tradScore * 100).toStringAsFixed(1)}% improvement over PSTN, "
+                "VoIP shows ${((voipScore - tradScore) / tradScore * 100).toStringAsFixed(1)}% improvement over PSTN",
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
                 textAlign: TextAlign.center,
