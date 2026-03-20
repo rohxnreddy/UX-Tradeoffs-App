@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
@@ -331,6 +332,59 @@ class _IQAPageState extends State<IQAPage> {
   String _niqeLabel(double v)    => v < 3  ? 'Very Good' : v < 5  ? 'Good' : v < 7  ? 'Fair' : 'Poor';
   String _piqeLabel(double v)    => v < 20 ? 'Excellent' : v < 40 ? 'Good' : v < 60 ? 'Fair' : 'Poor';
 
+  // ── Camera Score ──────────────────────────────────────────────
+  //
+  // Unified score fusing BRISQUE, NIQE, and PIQE into a single
+  // 0–100 value where 0 = perfect and 100 = worst.
+  //
+  // Method: Weighted Geometric Mean on normalised scores.
+  //
+  //   B_n = clamp(brisque, 0, 100) / 100          [0,1]
+  //   N_n = clamp(niqe,    0,  15) / 15            [0,1]
+  //   P_n = clamp(piqe,    0, 100) / 100           [0,1]
+  //
+  //   score_raw = B_n^0.20 × N_n^0.45 × P_n^0.35
+  //   score     = (1 - score_raw) × 100              [0,100]  higher = better
+  //
+  // Weight rationale:
+  //   NIQE    0.45 – most reliable for real-world mobile scenes; less biased
+  //                  by ISP sharpening/compression than BRISQUE
+  //   PIQE    0.35 – local patch distortion; consistent with perceptual quality
+  //   BRISQUE 0.20 – downweighted because it over-penalises mobile ISP
+  //                  processing that is not perceptually bad
+  //
+  // Geometric mean (vs arithmetic) penalises any single catastrophic
+  // failure more harshly, which matches real-world camera defect behaviour.
+  //
+  // Special case: if any normalised component is exactly 0 (theoretically
+  // perfect), score = 0 to avoid log(0) undefined behaviour.
+
+  double computeCDI({
+    required double brisque,
+    required double niqe,
+    required double piqe,
+  }) {
+    // Clamp to valid physical ranges and normalise to [0,1].
+    final bN = (brisque.clamp(0.0, 100.0)) / 100.0;
+    final nN = (niqe.clamp(0.0, 15.0))    / 15.0;
+    final pN = (piqe.clamp(0.0, 100.0))   / 100.0;
+
+    // Guard: perfectly zero on any component → score = 100 (perfect quality).
+    if (bN == 0.0 || nN == 0.0 || pN == 0.0) return 100.0;
+
+    // Weighted geometric mean via log-space to avoid floating-point underflow.
+    final cdiRaw = math.exp(
+      0.20 * math.log(bN) +
+          0.45 * math.log(nN) +
+          0.35 * math.log(pN),
+    );
+
+    return (100.0 - (cdiRaw * 100.0)).clamp(0.0, 100.0);
+  }
+
+  String _cameraScoreLabel(double v) =>
+      v >= 80 ? 'Excellent' : v >= 60 ? 'Good' : v >= 40 ? 'Fair' : 'Poor';
+
   Color _qualityColor(String l) {
     if (l == 'Excellent' || l == 'Very Good') return Colors.green;
     if (l == 'Good') return Colors.lightGreen;
@@ -424,6 +478,14 @@ class _IQAPageState extends State<IQAPage> {
   }
 
   Widget _resultCard(Map<String, dynamic> r) {
+    final double brisque = r['brisque'] as double;
+    final double niqe    = r['niqe']    as double;
+    final double piqe    = r['piqe']    as double;
+    final double cdi     = computeCDI(brisque: brisque, niqe: niqe, piqe: piqe);
+    final String cdiText = cdi.toStringAsFixed(1);
+    final String cdiLbl  = _cameraScoreLabel(cdi);
+    final Color  cdiColor = _qualityColor(cdiLbl);
+
     return Card(
       elevation: 3,
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -431,6 +493,8 @@ class _IQAPageState extends State<IQAPage> {
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+          // ── Header ──────────────────────────────────────────────
           Row(children: [
             Icon(r['icon'] as IconData, size: 20),
             const SizedBox(width: 8),
@@ -438,15 +502,72 @@ class _IQAPageState extends State<IQAPage> {
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ]),
           const Divider(height: 16),
-          _metricRow(title: 'BRISQUE', value: r['brisque'] as double,
-              labelFn: _brisqueLabel, rangeInfo: '0–100'),
-          _metricRow(title: 'NIQE',    value: r['niqe']    as double,
-              labelFn: _niqeLabel,    rangeInfo: '0–10'),
-          _metricRow(title: 'PIQE',    value: r['piqe']    as double,
-              labelFn: _piqeLabel,    rangeInfo: '0–100'),
-          const SizedBox(height: 4),
-          const Text('Lower score = Better quality',
-              style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.black45)),
+
+          // ── CDI summary banner ──────────────────────────────────
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: cdiColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cdiColor.withOpacity(0.35), width: 1.2),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text(
+                      'Camera Score',
+                      style: TextStyle(fontSize: 11, color: Colors.black54,
+                          fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$cdiText / 100',
+                      style: TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold, color: cdiColor,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Weighted geometric mean  (B×0.20 · N×0.45 · P×0.35)',
+                      style: const TextStyle(fontSize: 10, color: Colors.black38),
+                    ),
+                  ]),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: cdiColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: cdiColor, width: 1),
+                  ),
+                  child: Text(cdiLbl,
+                      style: TextStyle(
+                          color: cdiColor, fontWeight: FontWeight.bold, fontSize: 14)),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── Individual metrics ──────────────────────────────────
+          _metricRow(title: 'BRISQUE', value: brisque,
+              labelFn: _brisqueLabel, rangeInfo: '0–100 · w=0.20'),
+          _metricRow(title: 'NIQE',    value: niqe,
+              labelFn: _niqeLabel,    rangeInfo: '0–15  · w=0.45'),
+          _metricRow(title: 'PIQE',    value: piqe,
+              labelFn: _piqeLabel,    rangeInfo: '0–100 · w=0.35'),
+
+          const SizedBox(height: 6),
+          const Text(
+            'Higher Camera Score = better quality  ·  100 = perfect  ·  0 = worst',
+            style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic,
+                color: Colors.black38),
+          ),
         ]),
       ),
     );
