@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from .brIsque import brisque_score
 from .niqe import niqe_score
 from .piqe import piqe_score
@@ -5,18 +6,22 @@ from .piqe import piqe_score
 # from .metaiqa import metaiqa_score
 
 
+
 def compute_iqa(image_path):
     """
-    Runs all IQA metrics on an image and returns results.
+    Runs all IQA metrics on an image in parallel threads and returns results.
     """
 
-    results = {
-        "brisque": brisque_score(image_path),
-        "niqe": niqe_score(image_path),
-        "piqe": piqe_score(image_path),
-        # "rankiqa": rankiqa_score(image_path),
-        # "metaiqa": metaiqa_score(image_path),
-    }
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_brisque = executor.submit(brisque_score, image_path)
+        future_niqe    = executor.submit(niqe_score, image_path)
+        future_piqe    = executor.submit(piqe_score, image_path)
+
+        results = {
+            "brisque": future_brisque.result(),
+            "niqe": future_niqe.result(),
+            "piqe": future_piqe.result(),
+        }
 
     return results
 

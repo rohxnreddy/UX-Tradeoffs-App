@@ -1,11 +1,13 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Depends
 from fastapi.responses import FileResponse
+from fastapi.concurrency import run_in_threadpool
 from src.database import create_db_and_tables, get_async_session
 from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 from sqlalchemy import select
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+import asyncio
 
 from src.vmaf.vmaf import compute_vmaf
 from src.peaq.peaq import compute_peaq_odg, PEAQError
@@ -221,26 +223,43 @@ async def webrtc_device_call(
 
 @app.post("/iqa/score")
 async def calculate_iqa(
-    image: UploadFile = File(...),
+    images: list[UploadFile] = File(...),
 ):
-    contents = await image.read()
-    if not contents:
-        raise HTTPException(400, "Empty file uploaded")
+    if not images:
+        raise HTTPException(400, "No files uploaded")
 
-    suffix = Path(image.filename or "").suffix or ".jpg"
-
-    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(contents)
-        image_path = Path(tmp.name)
+    temp_paths = []
 
     try:
-        scores = compute_iqa(image_path)
+        for image in images:
+            contents = await image.read()
+            if not contents:
+                raise HTTPException(400, f"Empty file: {image.filename}")
 
-        return {
-            "brisque": round(scores["brisque"], 2),
-            "niqe": round(scores["niqe"], 2),
-            "piqe": round(scores["piqe"], 2),
-        }
+            suffix = Path(image.filename or "").suffix or ".jpg"
+
+            with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(contents)
+                temp_paths.append(Path(tmp.name))
+
+        tasks = [
+            run_in_threadpool(compute_iqa, path)
+            for path in temp_paths
+        ]
+
+        all_scores = await asyncio.gather(*tasks)
+
+        response = []
+        for idx, scores in enumerate(all_scores):
+            response.append({
+                "image_index": idx,
+                "brisque": round(scores["brisque"], 2),
+                "niqe": round(scores["niqe"], 2),
+                "piqe": round(scores["piqe"], 2),
+            })
+
+        return {"results": response}
 
     finally:
-        image_path.unlink(missing_ok=True)
+        for path in temp_paths:
+            path.unlink(missing_ok=True)
