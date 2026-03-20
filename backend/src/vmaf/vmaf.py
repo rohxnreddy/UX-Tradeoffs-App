@@ -18,7 +18,7 @@ def get_video_info(path: Path):
         "ffprobe",
         "-v", "error",
         "-select_streams", "v:0",
-        "-show_entries", "stream=width,height,r_frame_rate",
+        "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate",
         "-of", "json",
         str(path)
     ]
@@ -27,10 +27,22 @@ def get_video_info(path: Path):
         info = json.loads(out)
         stream = info["streams"][0]
 
-        width = int(stream["width"])
+        width  = int(stream["width"])
         height = int(stream["height"])
-        num, den = map(int, stream["r_frame_rate"].split("/"))
-        fps = num / den
+
+        def parse(s):
+            try:
+                n, d = map(int, s.split("/"))
+                return n / d if d else 0
+            except Exception:
+                return 0
+
+        fps = parse(stream.get("avg_frame_rate", "0/0"))
+        if fps <= 0 or fps > 240:
+            fps = parse(stream.get("r_frame_rate", "0/0"))
+        if fps > 240:
+            fps = 60.0
+
         return width, height, fps
     except Exception as e:
         raise VMAFError(f"Failed to get video info for {path}: {e}")
@@ -51,19 +63,68 @@ def get_video_duration(path: Path) -> float:
         raise VMAFError(f"Failed to get duration for {path}: {e}")
 
 
+def find_content_start(path: Path, duration: float) -> float:
+    """
+    Find exact timestamp where video content starts using scene change detection.
+    The warmup black screen → first video frame is a large scene change (~1.0).
+    Falls back to blackdetect, then 0.0.
+    """
+    scan_duration = min(10.0, duration)
+
+    cmd = [
+        "ffmpeg",
+        "-t", str(scan_duration),
+        "-i", str(path),
+        "-vf", "select=gt(scene\\,0.15),showinfo",
+        "-vsync", "vfr",
+        "-f", "null", "-"
+    ]
+
+    try:
+        result  = subprocess.run(cmd, stderr=subprocess.PIPE, text=True)
+        matches = re.findall(r"pts_time:([\d.]+)", result.stderr)
+        if matches:
+            content_start = float(matches[0])
+            print(f"[scenedetect] Content starts at {content_start:.4f}s")
+            return content_start
+    except Exception as e:
+        print(f"[scenedetect] Warning: {e}")
+
+    # Fallback: blackdetect
+    cmd2 = [
+        "ffmpeg",
+        "-t", str(scan_duration),
+        "-i", str(path),
+        "-vf", "blackdetect=d=0.05:pix_th=0.15",
+        "-an", "-f", "null", "-"
+    ]
+    try:
+        result2  = subprocess.run(cmd2, stderr=subprocess.PIPE, text=True)
+        matches2 = re.findall(r"black_end:([\d.]+)", result2.stderr)
+        if matches2:
+            content_start = float(matches2[-1])
+            print(f"[blackdetect] Content starts at {content_start:.4f}s")
+            return content_start
+    except Exception as e:
+        print(f"[blackdetect] Warning: {e}")
+
+    print(f"[content_start] No transition detected — using 0.0s")
+    return 0.0
+
+
 def detect_crop_parameters(path: Path, duration: float) -> str:
-    start_check = max(0, duration / 2)
-    
+    start_check = min(3.0, duration * 0.1)
+
     cmd = [
         "ffmpeg",
         "-ss", str(start_check),
         "-i", str(path),
-        "-vframes", "10",  
-        "-vf", "cropdetect=24:16:0",
+        "-vframes", "30",
+        "-vf", "cropdetect=24:2:0",
         "-f", "null",
         "-"
     ]
-    
+
     try:
         result = subprocess.run(cmd, stderr=subprocess.PIPE, text=True)
         matches = re.findall(r"crop=(\d+:\d+:\d+:\d+)", result.stderr)
@@ -71,7 +132,7 @@ def detect_crop_parameters(path: Path, duration: float) -> str:
             return f"crop={matches[-1]}"
     except Exception:
         pass
-    
+
     return "null"
 
 
@@ -80,22 +141,19 @@ def save_debug_video(input_path: Path, start_time: float, crop_filter: str) -> N
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
     output_path = DEBUG_DIR / f"{timestamp}{suffix}"
 
-    if crop_filter != "null":
-        vf_chain = crop_filter
-    else:
-        vf_chain = "null" 
+    vf_chain = crop_filter if crop_filter != "null" else "null"
 
     cmd = [
         "ffmpeg",
         "-y",
-        "-ss", str(start_time),      
+        "-ss", str(start_time),
         "-i", str(input_path),
-        "-t", "30",                   
-        "-vf", vf_chain,              
-        "-c:v", "mpeg4",              
-        "-q:v", "2",                  
-        "-c:a", "copy",               
-        "-movflags", "+faststart",    
+        "-t", "20",
+        "-vf", vf_chain,
+        "-c:v", "mpeg4",
+        "-q:v", "2",
+        "-c:a", "copy",
+        "-movflags", "+faststart",
         str(output_path),
     ]
 
@@ -106,97 +164,45 @@ def save_debug_video(input_path: Path, start_time: float, crop_filter: str) -> N
         stderr_text = e.stderr.decode() if e.stderr else str(e)
         print(f"Warning: Could not save debug video. Error: {stderr_text}")
 
-# def save_side_by_side_debug(
-#     ref_path,
-#     dist_path,
-#     ref_start,
-#     dist_start,
-#     duration,
-#     crop_filter,
-#     output_path,
-# ):
-#     """Creates a side-by-side video of Reference vs Distorted to check sync."""
-
-#     output_path = Path(output_path)
-#     output_path.parent.mkdir(parents=True, exist_ok=True)
-
-#     print(f"Generating sync check video: {output_path} ...")
-
-#     dist_chain = (
-#         f"[1:v]trim=start={dist_start}:duration={duration},setpts=PTS-STARTPTS"
-#     )
-
-#     if crop_filter and crop_filter != "null":
-#         dist_chain += f",{crop_filter}"
-
-#     dist_chain += ",scale=-1:720[dist_v]"
-
-#     filter_complex = (
-#         f"[0:v]trim=start={ref_start}:duration={duration},setpts=PTS-STARTPTS,scale=-1:720[ref_v];"
-#         f"{dist_chain};"
-#         f"[ref_v][dist_v]hstack=inputs=2[out_v]"
-#     )
-
-#     cmd = (
-#         f'ffmpeg -y '
-#         f'-i "{ref_path}" '
-#         f'-i "{dist_path}" '
-#         f'-t {duration} '
-#         f'-filter_complex "{filter_complex}" '
-#         f'-map "[out_v]" '
-#         f'"{output_path}"'
-#     )
-
-#     print("Running FFmpeg command:")
-#     print(cmd)
-
-#     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-
-#     if result.returncode != 0:
-#         print("❌ Failed to save debug video.")
-#         print(result.stderr)
-#     else:
-#         print(f"✅ Saved sync check video to: {output_path.resolve()}")      
 
 def compute_vmaf(
     distorted_video: str | Path,
     reference_video: str | Path = REFERENCE_VIDEO,
 ) -> float:
     dist_path = Path(distorted_video).resolve()
-    ref_path = Path(reference_video).resolve()
+    ref_path  = Path(reference_video).resolve()
 
     if not ref_path.exists():
         raise VMAFError(f"Reference video not found: {ref_path}")
     if not dist_path.exists():
         raise VMAFError(f"Distorted video not found: {dist_path}")
 
-
     ref_width, ref_height, ref_fps = get_video_info(ref_path)
     dist_duration = get_video_duration(dist_path)
-    ref_duration = get_video_duration(ref_path)
+    ref_duration  = get_video_duration(ref_path)
 
-    seek_duration = 30
-    dist_start = max(0, dist_duration - seek_duration)
-    ref_start = max(0, ref_duration - seek_duration)
+    seek_duration = 20
 
+    # Use scene detection to find the exact frame where video playback starts.
+    # dist_start = that exact timestamp → compare dist[content_start : content_start+20s]
+    # ref_start  = 0.0                  → compare ref[0s : 20s]
+    dist_start = find_content_start(dist_path, dist_duration)
+    ref_start  = 0.0
 
     crop_filter = detect_crop_parameters(dist_path, dist_duration)
     print(f"Detected Crop: {crop_filter}")
+    print(f"ref  [{ref_start:.4f}s → {ref_start + seek_duration:.4f}s]")
+    print(f"dist [{dist_start:.4f}s → {dist_start + seek_duration:.4f}s]")
 
-
-    # save_debug_video(dist_path, dist_start, crop_filter)
-    # save_side_by_side_debug(ref_path, dist_path, ref_start, dist_start, seek_duration, crop_filter, DEBUG_DIR / "sync_check.mp4")
-
+    # Uncomment to save a debug clip:
+    save_debug_video(dist_path, dist_start, crop_filter)
 
     with NamedTemporaryFile(suffix=".json", delete=False) as tmp:
         output_json = Path(tmp.name)
 
-    
     dist_chain = f"[1:v]trim=start={dist_start}:duration={seek_duration},setpts=PTS-STARTPTS"
     if crop_filter != "null":
         dist_chain += f",{crop_filter}"
-    
-
     dist_chain += f",scale={ref_width}:{ref_height},fps={ref_fps}[dist];"
 
     vmaf_filter = (
@@ -204,9 +210,9 @@ def compute_vmaf(
         f"setpts=PTS-STARTPTS,"
         f"scale={ref_width}:{ref_height},"
         f"fps={ref_fps}[ref];"
-        
+
         f"{dist_chain}"
-        
+
         f"[ref][dist]libvmaf="
         f"log_fmt=json:"
         f"log_path={output_json}"

@@ -7,6 +7,24 @@ import 'package:flutter_screen_recording/flutter_screen_recording.dart';
 import 'package:video_player/video_player.dart';
 import 'package:http/http.dart' as http;
 
+// ── Design tokens (Light Theme) ───────────────────────────────────────────────
+class _C {
+  static const bg         = Color(0xFFF8F9FA);
+  static const surface    = Color(0xFFFFFFFF);
+  static const surfaceAlt = Color(0xFFF1F3F4);
+  static const border     = Color(0xFFE0E0E0);
+  static const borderLit  = Color(0xFFBDBDBD);
+  static const accent     = Color(0xFF0097A7);
+  static const accentDim  = Color(0xFF006064);
+  static const good       = Color(0xFF2E7D32);
+  static const warn       = Color(0xFFF9A825);
+  static const bad        = Color(0xFFC62828);
+  static const textPri    = Color(0xFF202124);
+  static const textSec    = Color(0xFF5F6368);
+  static const textDim    = Color(0xFF9AA0A6);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 class VmafPlayer extends StatefulWidget {
   final VoidCallback? onMenuPressed;
   const VmafPlayer({super.key, this.onMenuPressed});
@@ -15,679 +33,286 @@ class VmafPlayer extends StatefulWidget {
   State<VmafPlayer> createState() => _VmafPlayerState();
 }
 
-class _VmafPlayerState extends State<VmafPlayer> {
+class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
   late VideoPlayerController _player;
-  bool isProcessing = false;
-  bool isFullscreen = false;
-  bool hasRecordingPermission = false;
+  bool _playerReady   = false;
+  bool isProcessing   = false;
+  bool isSendingToApi = false;
+  bool isFullscreen   = false;
   String? recordedPath;
   double? vmafScore;
-  String statusMessage = "Ready to start test";
+  String  statusMessage = "Ready";
+  String? errorMessage;
 
   String apiUrl = "http://192.168.0.102:8000/vmaf/score";
+
+  late AnimationController _pulseCtrl;
+  late AnimationController _scoreCtrl;
+  late Animation<double>   _scoreAnim;
+
+  // ── Timing constants ──────────────────────────────────────────────────────
+  static const Duration _recordingWarmup   = Duration(milliseconds: 2500);
+  static const Duration _encoderFlush      = Duration(milliseconds: 1500);
+  static const Duration _orientationSettle = Duration(milliseconds: 1200);
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _initializeApp();
-  }
-
-  Future<void> _initializeApp() async {
-    await _initializePlayer();
-  }
-
-  Future<void> _initializePlayer() async {
-    _player = VideoPlayerController.asset("assets/video/reference.mp4");
-
-    try {
-      await _player.initialize();
-      setState(() {});
-    } catch (e) {
-      setState(() {
-        statusMessage = "Error loading video: $e";
-      });
-    }
+    _pulseCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _scoreCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900),
+    );
+    _scoreAnim = CurvedAnimation(parent: _scoreCtrl, curve: Curves.easeOutExpo);
+    _initializePlayer();
   }
 
   @override
   void dispose() {
+    _pulseCtrl.dispose();
+    _scoreCtrl.dispose();
     _player.dispose();
     SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
+      DeviceOrientation.portraitUp, DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
-  Future<void> enterFullscreen() async {
+  Future<void> _initializePlayer() async {
+    _player = VideoPlayerController.asset("assets/video/reference.mp4");
+    try {
+      await _player.initialize();
+      setState(() => _playerReady = true);
+    } catch (e) {
+      setState(() => statusMessage = "Failed to load reference video");
+    }
+  }
+
+  Future<void> _enterFullscreen() async {
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    setState(() {
-      isFullscreen = true;
-    });
-    await Future.delayed(const Duration(milliseconds: 800));
+
+    await SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.immersiveSticky,
+      overlays: [],
+    );
+    await Future.delayed(const Duration(milliseconds: 600));
+    await SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.immersiveSticky,
+      overlays: [],
+    );
+
+    setState(() => isFullscreen = true);
+    await Future.delayed(_orientationSettle);
   }
 
-  Future<void> exitFullscreen() async {
+  Future<void> _exitFullscreen() async {
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    setState(() {
-      isFullscreen = false;
-    });
+    setState(() => isFullscreen = false);
     await Future.delayed(const Duration(milliseconds: 500));
   }
 
+  // ── Main test flow ─────────────────────────────────────────────────────────
   Future<void> runFullTest() async {
     setState(() {
-      isProcessing = true;
-      vmafScore = null;
-      recordedPath = null;
-      statusMessage = "Preparing test...";
+      isProcessing  = true;
+      vmafScore     = null;
+      recordedPath  = null;
+      errorMessage  = null;
+      statusMessage = "Preparing...";
     });
+    _scoreCtrl.reset();
 
     try {
-      // Step 1: Enter fullscreen landscape
-      setState(() {
-        statusMessage = "Switching to fullscreen...";
-      });
-      await enterFullscreen();
+      setState(() => statusMessage = "Entering fullscreen...");
+      await _enterFullscreen();
 
-      // Step 2: Start recording (permission will be requested here if not granted)
-      setState(() {
-        statusMessage =
-            "Starting recording (requesting permission if needed)...";
-      });
+      setState(() => statusMessage = "Starting recorder...");
+      final bool started =
+      await FlutterScreenRecording.startRecordScreen("vmaf_test");
+      if (!started) throw Exception("Screen recording permission denied.");
 
-      bool started = await FlutterScreenRecording.startRecordScreen(
-        "vmaf_test",
-      );
+      setState(() => statusMessage = "Warming up recorder...");
+      await Future.delayed(_recordingWarmup);
 
-      if (!started) {
-        setState(() {
-          hasRecordingPermission = false;
-        });
-        throw Exception(
-          "Failed to start screen recording. Permission may have been denied.",
-        );
-      }
-
-      // Permission was granted
-      setState(() {
-        hasRecordingPermission = true;
-      });
-
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      // Step 3: Play video from start
-      setState(() {
-        statusMessage = "Recording video playback...";
-      });
-
+      setState(() => statusMessage = "Playing reference video...");
       await _player.seekTo(Duration.zero);
       await _player.play();
 
-      // Wait for video to complete
-      final duration = _player.value.duration;
-      await Future.delayed(duration + const Duration(milliseconds: 500));
-
+      final videoDuration = _player.value.duration;
+      await Future.delayed(videoDuration + const Duration(milliseconds: 300));
       await _player.pause();
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 200));
 
-      // Step 4: Stop recording
-      setState(() {
-        statusMessage = "Stopping recording...";
-      });
+      setState(() => statusMessage = "Stopping recorder...");
+      final String path = await FlutterScreenRecording.stopRecordScreen;
+      if (path.isEmpty) throw Exception("Recording returned empty path.");
 
-      String path = await FlutterScreenRecording.stopRecordScreen;
-
-      if (path.isEmpty) {
-        throw Exception("Recording failed - no file path returned");
-      }
+      setState(() => statusMessage = "Flushing encoder...");
+      await Future.delayed(_encoderFlush);
 
       recordedPath = path;
-      print("Recorded video at: $recordedPath");
 
-      // Step 5: Exit fullscreen
-      setState(() {
-        statusMessage = "Returning to portrait...";
-      });
-      await exitFullscreen();
+      await _exitFullscreen();
 
-      // Verify file exists and has content
-      final file = File(recordedPath!);
-      if (!await file.exists()) {
-        throw Exception("Recorded file does not exist: $recordedPath");
-      }
-
+      final file     = File(recordedPath!);
       final fileSize = await file.length();
-      if (fileSize == 0) {
-        throw Exception("Recorded file is empty");
+      if (!await file.exists() || fileSize < 1024) {
+        throw Exception("Recording file invalid (${fileSize}B).");
       }
 
-      print("File size: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB");
-
-      // Step 6: Upload to API
-      setState(() {
-        statusMessage =
-            "Uploading to API (${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB)...";
-      });
-
-      await sendToApi();
+      setState(() => statusMessage =
+      "Uploading ${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB...");
+      await _sendToApi();
 
       setState(() {
-        statusMessage = "Test completed successfully!";
-        isProcessing = false;
+        isProcessing  = false;
+        statusMessage = "Done";
       });
 
-      _showSuccessDialog();
-    } catch (e, stackTrace) {
-      print("Error: $e");
-      print("Stack trace: $stackTrace");
-
-      await exitFullscreen();
-
+    } catch (e, st) {
+      debugPrint("$e\n$st");
+      await _exitFullscreen();
       setState(() {
-        statusMessage = "Error occurred";
-        isProcessing = false;
+        isProcessing  = false;
+        errorMessage  = e.toString();
+        statusMessage = "Failed";
       });
-
-      if (mounted) {
-        _showErrorDialog(e.toString());
-      }
     }
   }
 
-  Future<void> sendToApi() async {
-    try {
-      if (recordedPath == null) {
-        throw Exception("No recorded video path available");
-      }
+  // ── API call — shared by initial upload and resend ─────────────────────────
+  Future<void> _sendToApi() async {
+    if (recordedPath == null) throw Exception("No recording to send.");
 
-      final file = File(recordedPath!);
+    final file     = File(recordedPath!);
+    final fileSize = await file.length();
+    if (!await file.exists() || fileSize == 0) {
+      throw Exception("Recording file missing or empty.");
+    }
 
-      if (!await file.exists()) {
-        throw Exception("Video file not found at: $recordedPath");
-      }
-
-      final fileSize = await file.length();
-      if (fileSize == 0) {
-        throw Exception("Video file is empty");
-      }
-
-      print("Sending file to API: $apiUrl");
-      print("File path: $recordedPath");
-      print("File size: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB");
-
-      var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
-
-      // Add the video file
-      var multipartFile = await http.MultipartFile.fromPath(
-        'distorted_video',
-        recordedPath!,
+    final request = http.MultipartRequest('POST', Uri.parse(apiUrl));
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'distorted_video', recordedPath!,
         filename: 'distorted_video.mp4',
-      );
+      ),
+    );
 
-      request.files.add(multipartFile);
+    final streamed = await request.send().timeout(
+      const Duration(minutes: 10),
+      onTimeout: () => throw Exception("Upload timed out after 10 minutes."),
+    );
+    final body = await streamed.stream.bytesToString();
 
-      print("Sending request...");
+    if (streamed.statusCode != 200) {
+      throw Exception("API returned ${streamed.statusCode}: $body");
+    }
 
-      var streamedResponse = await request.send().timeout(
-        const Duration(minutes: 5),
-        onTimeout: () {
-          throw Exception("Request timed out after 5 minutes");
-        },
-      );
+    final data = jsonDecode(body);
+    if (!data.containsKey("vmaf_score")) {
+      throw Exception("Response missing 'vmaf_score' key.");
+    }
 
-      print("Response status: ${streamedResponse.statusCode}");
+    setState(() => vmafScore = (data["vmaf_score"] as num).toDouble());
+    _scoreCtrl.forward();
+  }
 
-      final responseBody = await streamedResponse.stream.bytesToString();
-      print("Response body: $responseBody");
+  Future<void> _resendToApi() async {
+    setState(() {
+      isSendingToApi = true;
+      errorMessage   = null;
+      vmafScore      = null;
+      statusMessage  = "Resending to API...";
+    });
+    _scoreCtrl.reset();
 
-      if (streamedResponse.statusCode == 200) {
-        try {
-          var data = jsonDecode(responseBody);
-
-          if (data.containsKey("vmaf_score")) {
-            setState(() {
-              vmafScore = (data["vmaf_score"] as num).toDouble();
-            });
-            print("VMAF Score: $vmafScore");
-          } else {
-            throw Exception("API response missing 'vmaf_score' field");
-          }
-        } catch (e) {
-          throw Exception(
-            "Failed to parse API response: $e\nResponse: $responseBody",
-          );
-        }
-      } else {
-        throw Exception(
-          "API Error (${streamedResponse.statusCode}): $responseBody",
-        );
-      }
-    } on SocketException catch (e) {
-      throw Exception(
-        "Network error: Cannot connect to API server.\n"
-        "Make sure:\n"
-        "1. API server is running\n"
-        "2. Using correct IP (10.0.2.2 for Android emulator)\n"
-        "3. Firewall allows connections\n"
-        "Details: ${e.message}",
-      );
-    } on TimeoutException catch (_) {
-      throw Exception(
-        "Request timed out. The API is taking too long to respond.\n"
-        "This may happen with large video files or slow processing.",
-      );
+    try {
+      await _sendToApi();
+      setState(() {
+        isSendingToApi = false;
+        statusMessage  = "Done";
+      });
     } catch (e) {
-      rethrow;
+      setState(() {
+        isSendingToApi = false;
+        errorMessage   = e.toString();
+        statusMessage  = "Failed";
+      });
     }
   }
 
-  void _showErrorDialog(String error) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline, color: Colors.red),
-            SizedBox(width: 8),
-            Text("Error"),
-          ],
-        ),
-        content: SingleChildScrollView(child: Text(error)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
-      ),
-    );
+  // ── Score helpers ──────────────────────────────────────────────────────────
+  Color  _scoreColor(double s) {
+    if (s >= 80) return _C.good;
+    if (s >= 55) return _C.warn;
+    return _C.bad;
+  }
+  String _scoreLabel(double s) {
+    if (s >= 90) return "EXCELLENT";
+    if (s >= 80) return "GOOD";
+    if (s >= 60) return "FAIR";
+    if (s >= 40) return "POOR";
+    return "VERY POOR";
   }
 
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle_outline, color: Colors.green),
-            SizedBox(width: 8),
-            Text("Success"),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("VMAF test completed successfully!"),
-            if (vmafScore != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green),
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      "VMAF Score",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      vmafScore!.toStringAsFixed(2),
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    // Fullscreen mode - only show video
+
     if (isFullscreen) {
       return Scaffold(
         backgroundColor: Colors.black,
         body: Center(
-          child: _player.value.isInitialized
+          child: _playerReady
               ? AspectRatio(
-                  aspectRatio: _player.value.aspectRatio,
-                  child: VideoPlayer(_player),
-                )
-              : const CircularProgressIndicator(color: Colors.white),
+            aspectRatio: _player.value.aspectRatio,
+            child: VideoPlayer(_player),
+          )
+              : const SizedBox.shrink(),
         ),
       );
     }
 
-    // Normal portrait mode UI
-    return Scaffold(
-      appBar: AppBar(
-        leading: widget.onMenuPressed != null
-            ? IconButton(
-                icon: const Icon(Icons.menu),
-                onPressed: widget.onMenuPressed,
-              )
-            : null,
-        title: const Text("VMAF Test Player"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: isProcessing ? null : _showSettingsDialog,
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Center(
+    return Theme(
+      data: ThemeData.light(),
+      child: Scaffold(
+        backgroundColor: _C.bg,
+        appBar: _buildAppBar(),
+        body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Video preview
-                if (_player.value.isInitialized)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: AspectRatio(
-                        aspectRatio: _player.value.aspectRatio,
-                        child: VideoPlayer(_player),
-                      ),
-                    ),
-                  )
-                else
-                  Container(
-                    height: 200,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-
+                _buildVideoPreview(),
+                const SizedBox(height: 16),
+                _buildStatusBar(),
                 const SizedBox(height: 20),
-
-                // Status message
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isProcessing
-                        ? Colors.blue.shade50
-                        : Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isProcessing ? Colors.blue : Colors.grey.shade300,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      if (isProcessing)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 12),
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      Expanded(
-                        child: Text(
-                          statusMessage,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // VMAF Score display
-                if (vmafScore != null)
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    margin: const EdgeInsets.only(bottom: 24),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.green.shade50, Colors.green.shade100],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green, width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.green.withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.check_circle, color: Colors.green),
-                            SizedBox(width: 8),
-                            Text(
-                              "VMAF Score",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          vmafScore!.toStringAsFixed(2),
-                          style: const TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _getScoreDescription(vmafScore!),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // Start test button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: isProcessing || !_player.value.isInitialized
-                        ? null
-                        : runFullTest,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade300,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: isProcessing ? 0 : 4,
-                    ),
-                    child: isProcessing
-                        ? const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: 12),
-                              Text(
-                                "Processing...",
-                                style: TextStyle(fontSize: 18),
-                              ),
-                            ],
-                          )
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.play_circle_outline, size: 24),
-                              SizedBox(width: 8),
-                              Text(
-                                "Start VMAF Test",
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-
-                // View recorded video button
+                if (vmafScore != null) ...[
+                  _buildScoreCard(),
+                  const SizedBox(height: 20),
+                ],
+                if (errorMessage != null) ...[
+                  _buildErrorCard(),
+                  const SizedBox(height: 20),
+                ],
+                _buildStartButton(),
                 if (recordedPath != null) ...[
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: isProcessing
-                          ? null
-                          : () => _showRecordedVideo(),
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text(
-                        "View Recorded Video",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: BorderSide(color: Colors.blue.shade700, width: 2),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildResendButton(),
+                  const SizedBox(height: 12),
+                  _buildViewRecordingButton(),
+                  const SizedBox(height: 12),
+                  _buildFileInfo(),
                 ],
-
-                // File info
-                if (recordedPath != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.videocam,
-                                size: 16,
-                                color: Colors.grey,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  recordedPath!.split('/').last,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                          FutureBuilder<int>(
-                            future: File(recordedPath!).length(),
-                            builder: (context, snapshot) {
-                              if (snapshot.hasData) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.storage,
-                                        size: 16,
-                                        color: Colors.grey,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        "Size: ${(snapshot.data! / 1024 / 1024).toStringAsFixed(2)} MB",
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }
-                              return const SizedBox.shrink();
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -696,165 +321,570 @@ class _VmafPlayerState extends State<VmafPlayer> {
     );
   }
 
-  String _getScoreDescription(double score) {
-    if (score >= 95) return "Excellent quality";
-    if (score >= 80) return "Good quality";
-    if (score >= 60) return "Fair quality";
-    if (score >= 40) return "Poor quality";
-    return "Very poor quality";
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: _C.surface,
+      elevation: 0,
+      centerTitle: false,
+      leading: widget.onMenuPressed != null
+          ? IconButton(
+        icon: const Icon(Icons.menu, color: _C.textSec),
+        onPressed: widget.onMenuPressed,
+      )
+          : null,
+      title: Row(children: [
+        Container(
+          width: 8, height: 8,
+          decoration: BoxDecoration(
+            color: _playerReady ? _C.good : _C.textDim,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 10),
+        const Text(
+          "VMAF  TEST",
+          style: TextStyle(
+            color: _C.textPri, fontSize: 15,
+            fontWeight: FontWeight.w700, letterSpacing: 3,
+          ),
+        ),
+      ]),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.tune, color: _C.textSec, size: 22),
+          onPressed: (isProcessing || isSendingToApi) ? null : _showSettingsDialog,
+          tooltip: "API Settings",
+        ),
+      ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(height: 1, color: _C.border),
+      ),
+    );
   }
 
-  void _showSettingsDialog() {
-    final controller = TextEditingController(text: apiUrl);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("API Settings"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "API Endpoint:",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                hintText: "http://10.0.2.2:8000/vmaf/score",
-                border: OutlineInputBorder(),
+  Widget _buildVideoPreview() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _C.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _C.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(children: [
+              const Text(
+                "REFERENCE",
+                style: TextStyle(
+                  color: _C.textDim, fontSize: 10,
+                  fontWeight: FontWeight.w700, letterSpacing: 2,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
+              const Spacer(),
+              if (_playerReady) Text(
+                "${_player.value.size.width.toInt()}"
+                    "×${_player.value.size.height.toInt()}"
+                    "  ${_player.value.duration.inSeconds}s",
+                style: const TextStyle(
+                  color: _C.textDim, fontSize: 10, letterSpacing: 1,
+                ),
               ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Common endpoints:",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    "• Android Emulator:\n  http://10.0.2.2:8000/vmaf/score",
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    "• iOS Simulator:\n  http://127.0.0.1:8000/vmaf/score",
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    "• Physical Device:\n  http://YOUR_PC_IP:8000/vmaf/score",
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
+            ]),
           ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                apiUrl = controller.text.trim();
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("API endpoint updated")),
-              );
-            },
-            child: const Text("Save"),
+          Container(height: 1, color: _C.border),
+          AspectRatio(
+            aspectRatio: _playerReady ? _player.value.aspectRatio : 16 / 9,
+            child: _playerReady
+                ? VideoPlayer(_player)
+                : Container(
+              color: _C.surfaceAlt,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: _C.accentDim, strokeWidth: 2,
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showRecordedVideo() {
-    if (recordedPath == null) return;
-
-    // Create a new video player for the recorded video
-    final recordedVideoController = VideoPlayerController.file(
-      File(recordedPath!),
+  Widget _buildStatusBar() {
+    final busy = isProcessing || isSendingToApi;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: _C.surfaceAlt,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: busy ? _C.accentDim : _C.border),
+      ),
+      child: Row(children: [
+        if (busy)
+          AnimatedBuilder(
+            animation: _pulseCtrl,
+            builder: (_, __) => Container(
+              width: 8, height: 8,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: _C.accent.withOpacity(0.4 + 0.6 * _pulseCtrl.value),
+                shape: BoxShape.circle,
+              ),
+            ),
+          )
+        else
+          Container(
+            width: 8, height: 8,
+            margin: const EdgeInsets.only(right: 10),
+            decoration: BoxDecoration(
+              color: errorMessage != null
+                  ? _C.bad
+                  : vmafScore != null ? _C.good : _C.textDim,
+              shape: BoxShape.circle,
+            ),
+          ),
+        Expanded(
+          child: Text(
+            statusMessage,
+            style: TextStyle(
+              color: busy ? _C.accent : _C.textSec,
+              fontSize: 13, fontWeight: FontWeight.w500, letterSpacing: 0.5,
+            ),
+          ),
+        ),
+        if (busy)
+          const SizedBox(
+            width: 16, height: 16,
+            child: CircularProgressIndicator(strokeWidth: 1.5, color: _C.accentDim),
+          ),
+      ]),
     );
+  }
 
+  Widget _buildScoreCard() {
+    final color = _scoreColor(vmafScore!);
+    return AnimatedBuilder(
+      animation: _scoreAnim,
+      builder: (_, __) => Opacity(
+        opacity: _scoreAnim.value,
+        child: Transform.translate(
+          offset: Offset(0, 20 * (1 - _scoreAnim.value)),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+            decoration: BoxDecoration(
+              color: _C.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color.withOpacity(0.5), width: 1.5),
+              boxShadow: [BoxShadow(
+                color: color.withOpacity(0.12), blurRadius: 24,
+              )],
+            ),
+            child: Column(children: [
+              Text(
+                vmafScore!.toStringAsFixed(2),
+                style: TextStyle(
+                  color: color, fontSize: 72, fontWeight: FontWeight.w800,
+                  height: 1, letterSpacing: -2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: color.withOpacity(0.3)),
+                ),
+                child: Text(
+                  _scoreLabel(vmafScore!),
+                  style: TextStyle(
+                    color: color, fontSize: 11,
+                    fontWeight: FontWeight.w700, letterSpacing: 2,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildScoreBar(vmafScore!, color),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScoreBar(double score, Color color) {
+    return Column(children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: const [
+          Text("0",   style: TextStyle(color: _C.textDim, fontSize: 10)),
+          Text("50",  style: TextStyle(color: _C.textDim, fontSize: 10)),
+          Text("100", style: TextStyle(color: _C.textDim, fontSize: 10)),
+        ],
+      ),
+      const SizedBox(height: 4),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: Stack(children: [
+          Container(height: 6, color: _C.surfaceAlt),
+          AnimatedBuilder(
+            animation: _scoreAnim,
+            builder: (_, __) => FractionallySizedBox(
+              widthFactor: (score / 100) * _scoreAnim.value,
+              child: Container(
+                height: 6,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      _C.bad.withOpacity(0.8),
+                      _C.warn.withOpacity(0.8),
+                      _C.good.withOpacity(0.8)
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    ]);
+  }
+
+  Widget _buildErrorCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _C.bad.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _C.bad.withOpacity(0.4)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.error_outline, color: _C.bad, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            errorMessage!,
+            style: const TextStyle(color: _C.bad, fontSize: 12, height: 1.5),
+          ),
+        ),
+        GestureDetector(
+          onTap: () => setState(() => errorMessage = null),
+          child: const Icon(Icons.close, color: _C.bad, size: 16),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildStartButton() {
+    final busy    = isProcessing || isSendingToApi;
+    final enabled = !busy && _playerReady;
+    return _PrimaryButton(
+      label:   isProcessing ? statusMessage.toUpperCase() : "START VMAF TEST",
+      icon:    isProcessing ? null : Icons.play_arrow_rounded,
+      busy:    isProcessing,
+      enabled: enabled,
+      color:   _C.accent,
+      onTap:   runFullTest,
+    );
+  }
+
+  Widget _buildResendButton() {
+    final busy    = isProcessing || isSendingToApi;
+    final enabled = !busy && recordedPath != null;
+    return _PrimaryButton(
+      label:   isSendingToApi ? "SENDING..." : "RESEND TO API",
+      icon:    isSendingToApi ? null : Icons.refresh_rounded,
+      busy:    isSendingToApi,
+      enabled: enabled,
+      color:   _C.accentDim,
+      onTap:   _resendToApi,
+    );
+  }
+
+  Widget _buildViewRecordingButton() {
+    final busy = isProcessing || isSendingToApi;
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: busy ? null : _showRecordedVideo,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _C.textSec,
+          side: const BorderSide(color: _C.border),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        ),
+        icon: const Icon(Icons.videocam_outlined, size: 18),
+        label: const Text(
+          "VIEW RECORDED VIDEO",
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.5),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFileInfo() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _C.surfaceAlt,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _C.border),
+      ),
+      child: Row(children: [
+        const Icon(Icons.insert_drive_file_outlined, size: 14, color: _C.textDim),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            recordedPath!.split('/').last,
+            style: const TextStyle(
+              color: _C.textDim, fontSize: 11, letterSpacing: 0.3,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        FutureBuilder<int>(
+          future: File(recordedPath!).length(),
+          builder: (_, snap) {
+            if (!snap.hasData) return const SizedBox.shrink();
+            return Text(
+              "${(snap.data! / 1024 / 1024).toStringAsFixed(1)} MB",
+              style: const TextStyle(color: _C.textDim, fontSize: 11),
+            );
+          },
+        ),
+      ]),
+    );
+  }
+
+  void _showSettingsDialog() {
+    final ctrl = TextEditingController(text: apiUrl);
     showDialog(
       context: context,
-      builder: (context) => Dialog(
+      builder: (_) => Dialog(
+        backgroundColor: _C.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: _C.border),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "API SETTINGS",
+                style: TextStyle(
+                  color: _C.textPri, fontSize: 12,
+                  fontWeight: FontWeight.w700, letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text("Endpoint",
+                  style: TextStyle(color: _C.textSec, fontSize: 12)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: ctrl,
+                style: const TextStyle(color: _C.textPri, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: "http://192.168.x.x:8000/vmaf/score",
+                  hintStyle: const TextStyle(color: _C.textDim),
+                  filled: true,
+                  fillColor: _C.surfaceAlt,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(color: _C.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(color: _C.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: const BorderSide(color: _C.accentDim),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _C.bg,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: _C.border),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("EMULATOR  →  http://10.0.2.2:8000/vmaf/score",
+                        style: TextStyle(color: _C.textDim, fontSize: 11, height: 1.8)),
+                    Text("PHYSICAL  →  http://<PC_LAN_IP>:8000/vmaf/score",
+                        style: TextStyle(color: _C.textDim, fontSize: 11)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _C.textSec,
+                      side: const BorderSide(color: _C.border),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6)),
+                    ),
+                    child: const Text("CANCEL",
+                        style: TextStyle(fontSize: 12, letterSpacing: 1)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      setState(() => apiUrl = ctrl.text.trim());
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _C.accentDim,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6)),
+                    ),
+                    child: const Text("SAVE",
+                        style: TextStyle(fontSize: 12,
+                            fontWeight: FontWeight.w700, letterSpacing: 1)),
+                  ),
+                ),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showRecordedVideo() {
+    if (recordedPath == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
         backgroundColor: Colors.black,
-        insetPadding: const EdgeInsets.all(16),
-        child: RecordedVideoPlayer(
-          videoPath: recordedPath!,
-          controller: recordedVideoController,
+        insetPadding: const EdgeInsets.all(12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        child: _RecordedVideoPlayer(
+          controller: VideoPlayerController.file(File(recordedPath!)),
         ),
       ),
     );
   }
 }
 
-class RecordedVideoPlayer extends StatefulWidget {
-  final String videoPath;
-  final VideoPlayerController controller;
+class _PrimaryButton extends StatelessWidget {
+  final String    label;
+  final IconData? icon;
+  final bool      busy;
+  final bool      enabled;
+  final Color     color;
+  final VoidCallback onTap;
 
-  const RecordedVideoPlayer({
-    super.key,
-    required this.videoPath,
-    required this.controller,
+  const _PrimaryButton({
+    required this.label,
+    required this.busy,
+    required this.enabled,
+    required this.color,
+    required this.onTap,
+    this.icon,
   });
 
   @override
-  State<RecordedVideoPlayer> createState() => _RecordedVideoPlayerState();
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: AnimatedOpacity(
+        opacity: enabled ? 1.0 : 0.4,
+        duration: const Duration(milliseconds: 200),
+        child: ElevatedButton(
+          onPressed: enabled ? onTap : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: color.withOpacity(0.12),
+            foregroundColor: color,
+            disabledBackgroundColor: color.withOpacity(0.06),
+            disabledForegroundColor: color.withOpacity(0.3),
+            elevation: 0,
+            side: BorderSide(
+              color: enabled ? color.withOpacity(0.5) : color.withOpacity(0.2),
+            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            if (busy)
+              SizedBox(
+                width: 16, height: 16,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: color),
+              )
+            else if (icon != null)
+              Icon(icon, size: 20, color: color),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: TextStyle(
+                color: color, fontSize: 13,
+                fontWeight: FontWeight.w700, letterSpacing: 1.5,
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
-class _RecordedVideoPlayerState extends State<RecordedVideoPlayer> {
-  bool _isInitialized = false;
-  bool _isPlaying = false;
+class _RecordedVideoPlayer extends StatefulWidget {
+  final VideoPlayerController controller;
+  const _RecordedVideoPlayer({required this.controller});
+
+  @override
+  State<_RecordedVideoPlayer> createState() => _RecordedVideoPlayerState();
+}
+
+class _RecordedVideoPlayerState extends State<_RecordedVideoPlayer> {
+  bool    _ready   = false;
+  bool    _playing = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _initializeVideo();
+    _init();
   }
 
-  Future<void> _initializeVideo() async {
+  Future<void> _init() async {
     try {
       await widget.controller.initialize();
-      setState(() {
-        _isInitialized = true;
-      });
-      // Auto-play when opened
+      setState(() => _ready = true);
       widget.controller.play();
-      setState(() {
-        _isPlaying = true;
-      });
-
-      // Listen for video end
+      setState(() => _playing = true);
       widget.controller.addListener(() {
-        if (widget.controller.value.position >=
-            widget.controller.value.duration) {
-          setState(() {
-            _isPlaying = false;
-          });
+        if (mounted &&
+            widget.controller.value.position >= widget.controller.value.duration) {
+          setState(() => _playing = false);
         }
       });
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
+      setState(() => _error = e.toString());
     }
   }
 
@@ -864,14 +894,12 @@ class _RecordedVideoPlayerState extends State<RecordedVideoPlayer> {
     super.dispose();
   }
 
-  void _togglePlayPause() {
+  void _toggle() {
     setState(() {
-      if (_isPlaying) {
-        widget.controller.pause();
-        _isPlaying = false;
+      if (_playing) {
+        widget.controller.pause(); _playing = false;
       } else {
-        widget.controller.play();
-        _isPlaying = true;
+        widget.controller.play(); _playing = true;
       }
     });
   }
@@ -879,164 +907,136 @@ class _RecordedVideoPlayerState extends State<RecordedVideoPlayer> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(maxHeight: 600),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _C.border),
+      ),
+      constraints: const BoxConstraints(maxHeight: 560),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header
           Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade900,
-            child: Row(
-              children: [
-                const Icon(Icons.videocam, color: Colors.white),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    "Recorded Video",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: const BoxDecoration(
+              color: _C.surface,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+              border: Border(bottom: BorderSide(color: _C.border)),
+            ),
+            child: Row(children: [
+              const Text(
+                "RECORDED VIDEO",
+                style: TextStyle(
+                  color: _C.textSec, fontSize: 11,
+                  fontWeight: FontWeight.w700, letterSpacing: 2,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Icon(Icons.close, color: _C.textSec, size: 20),
+              ),
+            ]),
+          ),
+          Flexible(
+            child: _error != null
+                ? Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(_error!,
+                  style: const TextStyle(color: _C.bad, fontSize: 13)),
+            )
+                : !_ready
+                ? const Padding(
+              padding: EdgeInsets.all(40),
+              child: CircularProgressIndicator(
+                  color: _C.accentDim, strokeWidth: 2),
+            )
+                : GestureDetector(
+              onTap: _toggle,
+              child: Stack(alignment: Alignment.center, children: [
+                AspectRatio(
+                  aspectRatio: widget.controller.value.aspectRatio,
+                  child: VideoPlayer(widget.controller),
+                ),
+                AnimatedOpacity(
+                  opacity: _playing ? 0 : 1,
+                  duration: const Duration(milliseconds: 200),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      color: Colors.black54, shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _playing ? Icons.pause : Icons.play_arrow,
+                      color: Colors.white, size: 48,
                     ),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
+              ]),
             ),
           ),
-
-          // Video Player
-          Flexible(
-            child: Container(
-              color: Colors.black,
-              child: _error != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          "Error loading video:\n$_error",
-                          style: const TextStyle(color: Colors.red),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    )
-                  : !_isInitialized
-                  ? const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    )
-                  : Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        AspectRatio(
-                          aspectRatio: widget.controller.value.aspectRatio,
-                          child: VideoPlayer(widget.controller),
-                        ),
-                        // Play/Pause overlay
-                        GestureDetector(
-                          onTap: _togglePlayPause,
-                          child: Container(
-                            color: Colors.transparent,
-                            child: Center(
-                              child: AnimatedOpacity(
-                                opacity: _isPlaying ? 0.0 : 1.0,
-                                duration: const Duration(milliseconds: 300),
-                                child: Container(
-                                  padding: const EdgeInsets.all(20),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    _isPlaying ? Icons.pause : Icons.play_arrow,
-                                    size: 64,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Video progress indicator
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          child: VideoProgressIndicator(
-                            widget.controller,
-                            allowScrubbing: true,
-                            colors: const VideoProgressColors(
-                              playedColor: Colors.blue,
-                              bufferedColor: Colors.grey,
-                              backgroundColor: Colors.white24,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 8,
-                              horizontal: 16,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ),
-
-          // Controls
-          if (_isInitialized)
+          if (_ready)
             Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.grey.shade900,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: const BoxDecoration(
+                color: _C.surface,
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(8)),
+                border: Border(top: BorderSide(color: _C.border)),
+              ),
+              child: Column(children: [
+                VideoProgressIndicator(
+                  widget.controller,
+                  allowScrubbing: true,
+                  colors: const VideoProgressColors(
+                    playedColor: _C.accent,
+                    bufferedColor: _C.borderLit,
+                    backgroundColor: _C.surfaceAlt,
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
+                Row(children: [
                   IconButton(
                     icon: Icon(
-                      _isPlaying ? Icons.pause : Icons.play_arrow,
-                      color: Colors.white,
+                      _playing ? Icons.pause : Icons.play_arrow,
+                      color: _C.textSec, size: 22,
                     ),
-                    iconSize: 32,
-                    onPressed: _togglePlayPause,
+                    onPressed: _toggle,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
+                  const SizedBox(width: 8),
                   IconButton(
-                    icon: const Icon(Icons.replay, color: Colors.white),
-                    iconSize: 32,
+                    icon: const Icon(Icons.replay, color: _C.textDim, size: 20),
                     onPressed: () {
                       widget.controller.seekTo(Duration.zero);
                       widget.controller.play();
-                      setState(() {
-                        _isPlaying = true;
-                      });
+                      setState(() => _playing = true);
                     },
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
-                  Expanded(
-                    child: ValueListenableBuilder(
-                      valueListenable: widget.controller,
-                      builder: (context, VideoPlayerValue value, child) {
-                        final position = value.position;
-                        final duration = value.duration;
-                        return Text(
-                          "${_formatDuration(position)} / ${_formatDuration(duration)}",
-                          style: const TextStyle(color: Colors.white),
-                          textAlign: TextAlign.center,
-                        );
-                      },
+                  const Spacer(),
+                  ValueListenableBuilder(
+                    valueListenable: widget.controller,
+                    builder: (_, VideoPlayerValue v, __) => Text(
+                      "${_fmt(v.position)} / ${_fmt(v.duration)}",
+                      style: const TextStyle(
+                        color: _C.textDim, fontSize: 12, letterSpacing: 0.5,
+                      ),
                     ),
                   ),
-                ],
-              ),
+                ]),
+              ]),
             ),
         ],
       ),
     );
   }
 
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$minutes:$seconds";
+  String _fmt(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return "$m:$s";
   }
 }
