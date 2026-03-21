@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:frontend/vmaf/vmaf.dart';
+import 'package:frontend/vmaf/vmaf_home.dart';
 import 'package:frontend/peaq/peaq_test.dart';
 import 'package:frontend/pesq/pesq_test.dart';
 import 'package:frontend/IQA/IQA.dart';
@@ -30,14 +30,12 @@ class HomeNav extends StatefulWidget {
 }
 
 class _HomeNavState extends State<HomeNav> {
-  int _selectedIndex = 0;
+  int _selectedIndex = 1;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   void _onItemSelected(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-    Navigator.pop(context); // close drawer
+    setState(() => _selectedIndex = index);
+    Navigator.pop(context);
   }
 
   @override
@@ -48,11 +46,8 @@ class _HomeNavState extends State<HomeNav> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          // VMAF has its own Scaffold+AppBar (needed for fullscreen mode)
-          VmafPlayer(
-            onMenuPressed: () => _scaffoldKey.currentState?.openDrawer(),
-          ),
-          // PEAQ and PESQ get their own Scaffold with AppBar
+          // Pass the callback to open the drawer
+          VmafHome(onMenuPressed: () => _scaffoldKey.currentState?.openDrawer()),
           _buildPageScaffold(
             title: 'PEAQ — Audio Quality',
             icon: Icons.music_note_outlined,
