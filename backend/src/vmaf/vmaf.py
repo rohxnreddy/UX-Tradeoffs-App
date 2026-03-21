@@ -195,7 +195,7 @@ def compute_vmaf(
     print(f"dist [{dist_start:.4f}s → {dist_start + seek_duration:.4f}s]")
 
     # Uncomment to save a debug clip:
-    save_debug_video(dist_path, dist_start, crop_filter)
+    # save_debug_video(dist_path, dist_start, crop_filter)
 
     with NamedTemporaryFile(suffix=".json", delete=False) as tmp:
         output_json = Path(tmp.name)
