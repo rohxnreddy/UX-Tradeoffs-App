@@ -7,7 +7,7 @@ import 'package:flutter_screen_recording/flutter_screen_recording.dart';
 import 'package:video_player/video_player.dart';
 import 'package:http/http.dart' as http;
 
-// ── Design tokens (Light Theme) ───────────────────────────────────────────────
+// ── Design tokens ─────────────────────────────────────────────────────────────
 class _C {
   static const bg         = Color(0xFFF8F9FA);
   static const surface    = Color(0xFFFFFFFF);
@@ -35,10 +35,11 @@ class VmafPlayer extends StatefulWidget {
 
 class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
   late VideoPlayerController _player;
-  bool _playerReady   = false;
-  bool isProcessing   = false;
-  bool isSendingToApi = false;
-  bool isFullscreen   = false;
+  bool _playerReady    = false;
+  bool _videoVisible   = false; // controls black overlay — false = black screen
+  bool isProcessing    = false;
+  bool isSendingToApi  = false;
+  bool isFullscreen    = false;
   String? recordedPath;
   double? vmafScore;
   String  statusMessage = "Ready";
@@ -50,11 +51,8 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
   late AnimationController _scoreCtrl;
   late Animation<double>   _scoreAnim;
 
-  // ── Timing constants ──────────────────────────────────────────────────────
   static const Duration _recordingWarmup   = Duration(milliseconds: 2500);
-  static const Duration _encoderFlush      = Duration(milliseconds: 1500);
   static const Duration _orientationSettle = Duration(milliseconds: 1200);
-  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -97,7 +95,6 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-
     await SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.immersiveSticky,
       overlays: [],
@@ -108,15 +105,47 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
       overlays: [],
     );
 
-    setState(() => isFullscreen = true);
+    // Ensure video is invisible (black overlay on) before entering fullscreen.
+    // This prevents the VideoPlayer texture from showing frame 0 during warmup.
+    setState(() {
+      _videoVisible = false;
+      isFullscreen  = true;
+    });
+
     await Future.delayed(_orientationSettle);
   }
 
   Future<void> _exitFullscreen() async {
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    setState(() => isFullscreen = false);
+    setState(() {
+      isFullscreen  = false;
+      _videoVisible = false;
+    });
     await Future.delayed(const Duration(milliseconds: 500));
+  }
+
+  Future<void> _waitUntilFileStable(String path) async {
+    final file = File(path);
+    int previousSize = -1;
+    int stableCount  = 0;
+
+    setState(() => statusMessage = "Finalizing recording...");
+
+    while (stableCount < 2) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      final currentSize = await file.length();
+      if (currentSize == previousSize && currentSize > 0) {
+        stableCount++;
+      } else {
+        stableCount  = 0;
+        previousSize = currentSize;
+      }
+    }
+
+    await Future.delayed(const Duration(milliseconds: 500));
+    final finalSize = await file.length();
+    print("Recording finalized: ${(finalSize / 1024 / 1024).toStringAsFixed(2)} MB");
   }
 
   // ── Main test flow ─────────────────────────────────────────────────────────
@@ -133,17 +162,26 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
     try {
       setState(() => statusMessage = "Entering fullscreen...");
       await _enterFullscreen();
+      // At this point isFullscreen=true, _videoVisible=false
+      // Screen is pure black — VideoPlayer texture is hidden by overlay
 
       setState(() => statusMessage = "Starting recorder...");
       final bool started =
       await FlutterScreenRecording.startRecordScreen("vmaf_test");
       if (!started) throw Exception("Screen recording permission denied.");
 
+      // Warmup: screen stays pure black the entire time
+      // _videoVisible remains false → black overlay covers the VideoPlayer
       setState(() => statusMessage = "Warming up recorder...");
       await Future.delayed(_recordingWarmup);
 
-      setState(() => statusMessage = "Playing reference video...");
+      // Seek to zero while still under black overlay — no frame shown yet
       await _player.seekTo(Duration.zero);
+
+      // NOW reveal the video and start playing simultaneously.
+      // This is the scene change Python detects: black → first frame.
+      setState(() => statusMessage = "Playing reference video...");
+      setState(() => _videoVisible = true);
       await _player.play();
 
       final videoDuration = _player.value.duration;
@@ -155,17 +193,15 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
       final String path = await FlutterScreenRecording.stopRecordScreen;
       if (path.isEmpty) throw Exception("Recording returned empty path.");
 
-      setState(() => statusMessage = "Flushing encoder...");
-      await Future.delayed(_encoderFlush);
-
       recordedPath = path;
 
       await _exitFullscreen();
 
-      final file     = File(recordedPath!);
-      final fileSize = await file.length();
-      if (!await file.exists() || fileSize < 1024) {
-        throw Exception("Recording file invalid (${fileSize}B).");
+      await _waitUntilFileStable(path);
+
+      final fileSize = await File(path).length();
+      if (fileSize < 1024) {
+        throw Exception("Recording file too small (${fileSize}B) — recording failed.");
       }
 
       setState(() => statusMessage =
@@ -188,7 +224,7 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
     }
   }
 
-  // ── API call — shared by initial upload and resend ─────────────────────────
+  // ── API call ───────────────────────────────────────────────────────────────
   Future<void> _sendToApi() async {
     if (recordedPath == null) throw Exception("No recording to send.");
 
@@ -270,13 +306,26 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
     if (isFullscreen) {
       return Scaffold(
         backgroundColor: Colors.black,
-        body: Center(
-          child: _playerReady
-              ? AspectRatio(
-            aspectRatio: _player.value.aspectRatio,
-            child: VideoPlayer(_player),
-          )
-              : const SizedBox.shrink(),
+        body: Stack(
+          children: [
+            // VideoPlayer always in tree so texture stays registered
+            if (_playerReady)
+              Center(
+                child: AspectRatio(
+                  aspectRatio: _player.value.aspectRatio,
+                  child: VideoPlayer(_player),
+                ),
+              ),
+
+            // Black overlay covers the VideoPlayer completely during warmup.
+            // _videoVisible flips to true only the moment play() is called,
+            // creating a guaranteed clean black → first_frame scene change
+            // that Python's scene detector picks up on every single run.
+            if (!_videoVisible)
+              const Positioned.fill(
+                child: ColoredBox(color: Colors.black),
+              ),
+          ],
         ),
       );
     }
@@ -538,14 +587,10 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
               widthFactor: (score / 100) * _scoreAnim.value,
               child: Container(
                 height: 6,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      _C.bad.withOpacity(0.8),
-                      _C.warn.withOpacity(0.8),
-                      _C.good.withOpacity(0.8)
-                    ],
-                    stops: const [0.0, 0.5, 1.0],
+                    colors: [_C.bad, _C.warn, _C.good],
+                    stops: [0.0, 0.5, 1.0],
                   ),
                 ),
               ),
@@ -754,6 +799,13 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
                     onPressed: () {
                       setState(() => apiUrl = ctrl.text.trim());
                       Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: const Text("API endpoint saved"),
+                        backgroundColor: _C.surfaceAlt,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6)),
+                      ));
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _C.accentDim,
@@ -791,6 +843,7 @@ class _VmafPlayerState extends State<VmafPlayer> with TickerProviderStateMixin {
   }
 }
 
+// ── Reusable primary button ───────────────────────────────────────────────────
 class _PrimaryButton extends StatelessWidget {
   final String    label;
   final IconData? icon;
@@ -852,6 +905,7 @@ class _PrimaryButton extends StatelessWidget {
   }
 }
 
+// ── Recorded video player ─────────────────────────────────────────────────────
 class _RecordedVideoPlayer extends StatefulWidget {
   final VideoPlayerController controller;
   const _RecordedVideoPlayer({required this.controller});
