@@ -42,13 +42,13 @@ class DeviceMeta {
   final double? screenWidthPx;
   final double? screenHeightPx;
   final double? screenDensity;
+  // [7] Display refresh rate — relevant for VMAF video quality judgments.
+  final double? displayRefreshRate;
 
   // ── Locale & Regional ────────────────────────────────────────────
   final String? deviceLanguage;
   final String? deviceLocale;
   final String? timezone;
-  // NOTE: countryCode comes from reverse-geocoded location (real geography),
-  // NOT from device locale (which reflects language preference, not geography).
   final String? countryCode;
 
   // ── Battery ──────────────────────────────────────────────────────
@@ -62,6 +62,9 @@ class DeviceMeta {
   final String? localIpv4;
   final String? localIpv6;
   final bool? isVpnActive;
+  // [3] Network quality — speed category & estimated latency.
+  final String? networkSpeedCategory; // 'fast' | 'moderate' | 'slow' | 'none'
+  final int? networkLatencyMs;
 
   // ── Location ─────────────────────────────────────────────────────
   final double? latitude;
@@ -74,13 +77,38 @@ class DeviceMeta {
   final String? country;
   final String? postalCode;
   final String? adminArea;
-  final String? isoCountryCode; // e.g. "IN", "US" — from geocoding
+  final String? isoCountryCode;
 
   // ── Permissions ──────────────────────────────────────────────────
   final Map<String, String>? permissionStatuses;
 
   // ── Session ──────────────────────────────────────────────────────
   final DateTime? sessionStart;
+  // [1] User behavior — screen views, actions, session duration.
+  final int? sessionScreenViews;
+  final int? sessionUserActions;
+  // [9] App lifecycle events — how many times the app was backgrounded.
+  final int? sessionBackgroundCount;
+
+  // ── Performance ──────────────────────────────────────────────────
+  // [2] Performance metrics — app launch time, frame drops, crash logs.
+  final int? appLaunchTimeMs;
+  final int? frameDropCount;
+  final String? lastCrashInfo;
+
+  // ── Memory & Storage ─────────────────────────────────────────────
+  // [4] Device tier (derived from RAM + CPU).
+  final String? deviceTier; // 'high' | 'mid' | 'low'
+  // [5] Available RAM — directly affects test viability on constrained devices.
+  final int? totalRamMb;
+  final int? availableRamMb;
+  // [6] Free disk space — prevents silent failures during large quality tests.
+  final int? totalDiskMb;
+  final int? freeDiskMb;
+
+  // ── Audio ─────────────────────────────────────────────────────────
+  // [8] Audio output route — critical context for PESQ/PEAQ scores.
+  final String? audioOutputRoute; // 'speaker' | 'earpiece' | 'headphone' | 'bluetooth' | 'unknown'
 
   const DeviceMeta({
     this.deviceModel,
@@ -106,6 +134,7 @@ class DeviceMeta {
     this.screenWidthPx,
     this.screenHeightPx,
     this.screenDensity,
+    this.displayRefreshRate,
     this.deviceLanguage,
     this.deviceLocale,
     this.timezone,
@@ -118,6 +147,8 @@ class DeviceMeta {
     this.localIpv4,
     this.localIpv6,
     this.isVpnActive,
+    this.networkSpeedCategory,
+    this.networkLatencyMs,
     this.latitude,
     this.longitude,
     this.altitude,
@@ -131,6 +162,18 @@ class DeviceMeta {
     this.isoCountryCode,
     this.permissionStatuses,
     this.sessionStart,
+    this.sessionScreenViews,
+    this.sessionUserActions,
+    this.sessionBackgroundCount,
+    this.appLaunchTimeMs,
+    this.frameDropCount,
+    this.lastCrashInfo,
+    this.deviceTier,
+    this.totalRamMb,
+    this.availableRamMb,
+    this.totalDiskMb,
+    this.freeDiskMb,
+    this.audioOutputRoute,
   });
 
   Map<String, dynamic> toJson() => {
@@ -161,6 +204,7 @@ class DeviceMeta {
     'screen_width_px': screenWidthPx,
     'screen_height_px': screenHeightPx,
     'screen_density': screenDensity,
+    'display_refresh_rate': displayRefreshRate,
     // Locale
     'device_language': deviceLanguage,
     'device_locale': deviceLocale,
@@ -176,6 +220,8 @@ class DeviceMeta {
     'local_ipv4': localIpv4,
     'local_ipv6': localIpv6,
     'is_vpn_active': isVpnActive,
+    'network_speed_category': networkSpeedCategory,
+    'network_latency_ms': networkLatencyMs,
     // Location
     'latitude': latitude,
     'longitude': longitude,
@@ -192,7 +238,86 @@ class DeviceMeta {
     'permission_statuses': permissionStatuses,
     // Session
     'session_start': sessionStart?.toIso8601String(),
+    'session_screen_views': sessionScreenViews,
+    'session_user_actions': sessionUserActions,
+    'session_background_count': sessionBackgroundCount,
+    // Performance
+    'app_launch_time_ms': appLaunchTimeMs,
+    'frame_drop_count': frameDropCount,
+    'last_crash_info': lastCrashInfo,
+    // Memory & Storage
+    'device_tier': deviceTier,
+    'total_ram_mb': totalRamMb,
+    'available_ram_mb': availableRamMb,
+    'total_disk_mb': totalDiskMb,
+    'free_disk_mb': freeDiskMb,
+    // Audio
+    'audio_output_route': audioOutputRoute,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Session tracker — a lightweight singleton updated by the app as events occur.
+// Wire it up in your route observer and lifecycle mixin.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class SessionTracker {
+  SessionTracker._();
+  static final SessionTracker instance = SessionTracker._();
+
+  final DateTime _start = DateTime.now();
+  int _screenViews = 0;
+  int _userActions = 0;
+  int _backgroundCount = 0;
+
+  // Call from your RouteObserver.didPush / didReplace.
+  void recordScreenView() => _screenViews++;
+
+  // Call on significant user interactions (button taps, form submits, etc.).
+  void recordAction() => _userActions++;
+
+  // Call from AppLifecycleListener / WidgetsBindingObserver when app is paused.
+  void recordBackground() => _backgroundCount++;
+
+  DateTime get sessionStart => _start;
+  int get screenViews => _screenViews;
+  int get userActions => _userActions;
+  int get backgroundCount => _backgroundCount;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Performance tracker — records launch time, frame drops, and crash info.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class PerformanceTracker {
+  PerformanceTracker._();
+  static final PerformanceTracker instance = PerformanceTracker._();
+
+  // Stopwatch started at process entry (call markLaunchStart() in main()).
+  final Stopwatch _launchStopwatch = Stopwatch()..start();
+  int? _launchTimeMs;
+  int _frameDrops = 0;
+  String? _lastCrashInfo;
+
+  // Call once Flutter has rendered its first frame:
+  //   SchedulerBinding.instance.addPostFrameCallback((_) => PerformanceTracker.instance.markFirstFrame());
+  void markFirstFrame() {
+    if (_launchTimeMs == null) {
+      _launchStopwatch.stop();
+      _launchTimeMs = _launchStopwatch.elapsedMilliseconds;
+    }
+  }
+
+  // Call from a SchedulerBinding frame callback when frame budget is exceeded.
+  // Simple heuristic: flag a drop if a frame took > 16 ms (60 fps budget).
+  void recordFrameDrop() => _frameDrops++;
+
+  // Call from FlutterError.onError or PlatformDispatcher.instance.onError.
+  void recordCrash(String info) => _lastCrashInfo = info;
+
+  int? get launchTimeMs => _launchTimeMs;
+  int get frameDropCount => _frameDrops;
+  String? get lastCrashInfo => _lastCrashInfo;
 }
 
 /// Central service to collect all metadata.
@@ -219,6 +344,8 @@ class MetaCollector {
       _collectBattery(),
       _collectNetwork(),
       _collectPermissions(),
+      _collectMemoryAndStorage(),
+      _collectAudioRoute(),
       if (includeLocation) _collectLocation(),
     ]);
 
@@ -227,17 +354,25 @@ class MetaCollector {
     final battery     = results[2] as Map<String, dynamic>;
     final network     = results[3] as Map<String, dynamic>;
     final permissions = results[4] as Map<String, dynamic>;
+    final memStorage  = results[5] as Map<String, dynamic>;
+    final audio       = results[6] as Map<String, dynamic>;
     final location    = includeLocation
-        ? results[5] as Map<String, dynamic>
+        ? results[7] as Map<String, dynamic>
         : <String, dynamic>{};
 
     // country_code: prefer the ISO code from reverse-geocoding (real geography).
-    // Fall back to the locale suffix only when location is unavailable — and
-    // tag it so callers know it is locale-derived, not geography-derived.
     final geoIso    = location['iso_country_code'] as String?;
     final localeIso = device['locale_country_code'] as String?;
     final countryCode =
         geoIso ?? (localeIso != null ? '$localeIso(locale)' : null);
+
+    // Device tier derived from RAM + CPU cores.
+    final totalRam = memStorage['total_ram_mb'] as int?;
+    final cores    = device['cpu_cores'] as int?;
+    final tier     = _deriveDeviceTier(totalRam, cores);
+
+    final session = SessionTracker.instance;
+    final perf    = PerformanceTracker.instance;
 
     return DeviceMeta(
       // Device
@@ -263,10 +398,11 @@ class MetaCollector {
       appVersionCode:     pkg['version_code'],
       appInstallerPackage: pkg['installer'],
       isDebugBuild:       pkg['is_debug'],
-      // Screen — from WidgetsBinding.instance.window (fixes null values)
-      screenWidthPx:  screenData['width'],
-      screenHeightPx: screenData['height'],
-      screenDensity:  screenData['density'],
+      // Screen
+      screenWidthPx:      screenData['width'],
+      screenHeightPx:     screenData['height'],
+      screenDensity:      screenData['density'],
+      displayRefreshRate: screenData['refresh_rate'],
       // Locale
       deviceLanguage: device['language'],
       deviceLocale:   device['locale'],
@@ -276,12 +412,14 @@ class MetaCollector {
       batteryLevel: battery['level'],
       batteryState: battery['state'],
       // Network
-      connectionType: network['connection_type'],
-      wifiName:       network['wifi_name'],
-      wifiBSSID:      network['wifi_bssid'],
-      localIpv4:      network['local_ipv4'],
-      localIpv6:      network['local_ipv6'],
-      isVpnActive:    network['is_vpn'],
+      connectionType:       network['connection_type'],
+      wifiName:             network['wifi_name'],
+      wifiBSSID:            network['wifi_bssid'],
+      localIpv4:            network['local_ipv4'],
+      localIpv6:            network['local_ipv6'],
+      isVpnActive:          network['is_vpn'],
+      networkSpeedCategory: network['speed_category'],
+      networkLatencyMs:     network['latency_ms'],
       // Location
       latitude:         location['latitude'],
       longitude:        location['longitude'],
@@ -298,7 +436,22 @@ class MetaCollector {
       permissionStatuses: Map<String, String>.from(
           permissions['statuses'] as Map? ?? {}),
       // Session
-      sessionStart: DateTime.now(),
+      sessionStart:         session.sessionStart,
+      sessionScreenViews:   session.screenViews,
+      sessionUserActions:   session.userActions,
+      sessionBackgroundCount: session.backgroundCount,
+      // Performance
+      appLaunchTimeMs: perf.launchTimeMs,
+      frameDropCount:  perf.frameDropCount,
+      lastCrashInfo:   perf.lastCrashInfo,
+      // Memory & Storage
+      deviceTier:     tier,
+      totalRamMb:     memStorage['total_ram_mb'],
+      availableRamMb: memStorage['available_ram_mb'],
+      totalDiskMb:    memStorage['total_disk_mb'],
+      freeDiskMb:     memStorage['free_disk_mb'],
+      // Audio
+      audioOutputRoute: audio['route'],
     );
   }
 
@@ -306,21 +459,25 @@ class MetaCollector {
   // Private helpers
   // ──────────────────────────────────────────────────────────────────
 
-  /// FIX: reads physical screen size from WidgetsBinding.
-  /// Works without a BuildContext, always available after runApp().
+  /// Reads physical screen size and refresh rate from WidgetsBinding.
   Map<String, double?> _collectScreenMetrics() {
     try {
-      // ignore: deprecated_member_use
-      final view = WidgetsBinding.instance.window;
+      // PlatformDispatcher.views gives us the real FlutterView objects,
+      // which expose .physicalSize, .devicePixelRatio, and .display.refreshRate
+      // without any deprecated API.
+      final view = WidgetsBinding.instance.platformDispatcher.views.first;
       final physicalSize = view.physicalSize;
-      final dpr = view.devicePixelRatio;
+      final dpr          = view.devicePixelRatio;
+      // display.refreshRate is the correct, non-deprecated path (Flutter ≥ 3.7).
+      final refreshRate  = view.display.refreshRate;
       return {
-        'width':   physicalSize.width,
-        'height':  physicalSize.height,
-        'density': dpr,
+        'width':        physicalSize.width,
+        'height':       physicalSize.height,
+        'density':      dpr,
+        'refresh_rate': refreshRate,
       };
     } catch (_) {
-      return {'width': null, 'height': null, 'density': null};
+      return {'width': null, 'height': null, 'density': null, 'refresh_rate': null};
     }
   }
 
@@ -328,12 +485,10 @@ class MetaCollector {
     try {
       final di   = DeviceInfoPlugin();
       final info = await di.androidInfo;
-      final locale = Platform.localeName; // e.g. "en_IN" or "en_GB"
+      final locale = Platform.localeName;
 
-      // Split safely — some locales are just "en" with no underscore.
       final parts         = locale.split('_');
       final language      = parts.first;
-      // Do NOT use this as the real country — it reflects language settings.
       final localeCountry = parts.length > 1 ? parts.last : null;
 
       return {
@@ -355,7 +510,6 @@ class MetaCollector {
         'language':           language,
         'locale':             locale,
         'timezone':           DateTime.now().timeZoneName,
-        // Kept separate so collect() can label it as locale-derived.
         'locale_country_code': localeCountry,
       };
     } catch (_) {
@@ -385,7 +539,7 @@ class MetaCollector {
       final state   = await battery.batteryState;
       return {
         'level': level,
-        'state': state.name, // charging / discharging / full / unknown
+        'state': state.name,
       };
     } catch (_) {
       return {};
@@ -400,17 +554,18 @@ class MetaCollector {
 
       String? wifiName, wifiBSSID, localIpv4, localIpv6;
 
-      // WiFi SSID/BSSID/IP require ACCESS_FINE_LOCATION on Android 8.1+.
-      // Check both variants because permission_handler and geolocator manage
-      // separate runtime state on some devices.
       final whenInUse = await Permission.locationWhenInUse.status;
       final fine      = await Permission.location.status;
       if (whenInUse.isGranted || fine.isGranted) {
-        wifiName  = await netInfo.getWifiName();
+        wifiName = (await netInfo.getWifiName())?.replaceAll('"', '');
         wifiBSSID = await netInfo.getWifiBSSID();
         localIpv4 = await netInfo.getWifiIP();
         localIpv6 = await netInfo.getWifiIPv6();
       }
+
+      // [3] Measure latency with a lightweight ICMP-style TCP probe.
+      final latencyMs = await _measureLatencyMs();
+      final speedCategory = _classifyNetworkSpeed(result, latencyMs);
 
       return {
         'connection_type': _connectivityLabel(result),
@@ -419,6 +574,8 @@ class MetaCollector {
         'local_ipv4':      localIpv4,
         'local_ipv6':      localIpv6,
         'is_vpn':          await _detectVpn(),
+        'latency_ms':      latencyMs,
+        'speed_category':  speedCategory,
       };
     } catch (_) {
       return {};
@@ -453,7 +610,7 @@ class MetaCollector {
           country        = p.country;
           postalCode     = p.postalCode;
           adminArea      = p.administrativeArea;
-          isoCountryCode = p.isoCountryCode; // "IN" — accurate geography
+          isoCountryCode = p.isoCountryCode;
         }
       } catch (_) {}
 
@@ -504,11 +661,89 @@ class MetaCollector {
     return {'statuses': statuses};
   }
 
+  /// [4][5][6] Collects RAM and disk statistics from /proc/meminfo and
+  /// dart:io StatFs. No plugins required — works on any Android Flutter app.
+  Future<Map<String, dynamic>> _collectMemoryAndStorage() async {
+    int? totalRamMb, availableRamMb, totalDiskMb, freeDiskMb;
+
+    // RAM via /proc/meminfo (available on all Android versions).
+    try {
+      final memInfo = File('/proc/meminfo').readAsStringSync();
+      int? parseKb(String key) {
+        final match = RegExp('$key:\\s+(\\d+)\\s+kB', multiLine: true)
+            .firstMatch(memInfo);
+        return match != null ? int.tryParse(match.group(1)!) : null;
+      }
+      final totalKb     = parseKb('MemTotal');
+      final availableKb = parseKb('MemAvailable');
+      totalRamMb     = totalKb     != null ? totalKb ~/ 1024     : null;
+      availableRamMb = availableKb != null ? availableKb ~/ 1024 : null;
+    } catch (_) {}
+
+    // Disk via dart:io — reads the internal storage partition.
+    try {
+      final stat = await FileStat.stat('/data');
+      // FileStat doesn't expose block counts; use a /proc/mounts parse instead.
+      // Simpler cross-version approach: read df output via Process.
+      final result = await Process.run('df', ['/data']);
+      if (result.exitCode == 0) {
+        final lines = (result.stdout as String).trim().split('\n');
+        if (lines.length >= 2) {
+          final parts = lines.last.trim().split(RegExp(r'\s+'));
+          // df columns: Filesystem, 1K-blocks, Used, Available, Use%, Mounted
+          if (parts.length >= 4) {
+            final totalKb = int.tryParse(parts[1]);
+            final freeKb  = int.tryParse(parts[3]);
+            totalDiskMb = totalKb != null ? totalKb ~/ 1024 : null;
+            freeDiskMb  = freeKb  != null ? freeKb  ~/ 1024 : null;
+          }
+        }
+      }
+    } catch (_) {}
+
+    return {
+      'total_ram_mb':     totalRamMb,
+      'available_ram_mb': availableRamMb,
+      'total_disk_mb':    totalDiskMb,
+      'free_disk_mb':     freeDiskMb,
+    };
+  }
+
+  /// [8] Detects the current audio output route by inspecting Android audio
+  /// routing via /proc or a lightweight shell command.
+  /// Returns: 'speaker' | 'earpiece' | 'headphone' | 'bluetooth' | 'unknown'
+  Future<Map<String, dynamic>> _collectAudioRoute() async {
+    try {
+      // Android exposes the active audio device in /proc/asound/cards or
+      // via `dumpsys audio`. The dumpsys approach is the most reliable.
+      final result = await Process.run('dumpsys', ['audio']);
+      if (result.exitCode == 0) {
+        final output = (result.stdout as String).toLowerCase();
+        // Look for the active output device string in dumpsys audio output.
+        if (output.contains('bluetooth') || output.contains('a2dp') ||
+            output.contains('sco')) {
+          return {'route': 'bluetooth'};
+        }
+        if (output.contains('wired_headset') ||
+            output.contains('wired_headphone') ||
+            output.contains('usb_headset')) {
+          return {'route': 'headphone'};
+        }
+        if (output.contains('earpiece')) {
+          return {'route': 'earpiece'};
+        }
+        if (output.contains('speaker')) {
+          return {'route': 'speaker'};
+        }
+      }
+    } catch (_) {}
+    return {'route': 'unknown'};
+  }
+
   // ──────────────────────────────────────────────────────────────────
   // Utility helpers
   // ──────────────────────────────────────────────────────────────────
 
-  /// Counts physical CPU cores by reading /proc/cpuinfo.
   int? _cpuCoreCount() {
     try {
       final cpuInfo = File('/proc/cpuinfo').readAsStringSync();
@@ -518,7 +753,6 @@ class MetaCollector {
     }
   }
 
-  /// Heuristic rooted check — not 100% guaranteed.
   Future<bool> _checkRooted() async {
     const paths = [
       '/sbin/su',
@@ -535,7 +769,6 @@ class MetaCollector {
     return false;
   }
 
-  /// Detects an active VPN by scanning network interface names.
   Future<bool> _detectVpn() async {
     try {
       final interfaces = await NetworkInterface.list();
@@ -549,6 +782,46 @@ class MetaCollector {
       }
     } catch (_) {}
     return false;
+  }
+
+  /// [3] Estimates round-trip latency by opening a TCP socket to a reliable
+  /// host (Cloudflare DNS) and measuring the connection time.
+  Future<int?> _measureLatencyMs() async {
+    try {
+      final stopwatch = Stopwatch()..start();
+      final socket = await Socket.connect(
+        '1.1.1.1',
+        53,
+        timeout: const Duration(seconds: 3),
+      );
+      stopwatch.stop();
+      socket.destroy();
+      return stopwatch.elapsedMilliseconds;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// [3] Classifies network speed based on connectivity type and measured
+  /// latency. This gives a coarse quality tier without needing a speed test.
+  String _classifyNetworkSpeed(
+      List<ConnectivityResult> results, int? latencyMs) {
+    if (results.isEmpty || results.first == ConnectivityResult.none) {
+      return 'none';
+    }
+    if (latencyMs == null) return 'unknown';
+    if (latencyMs < 80)  return 'fast';    // Typical WiFi / 4G
+    if (latencyMs < 300) return 'moderate'; // Edge 3G, congested WiFi
+    return 'slow';                          // 2G or very poor signal
+  }
+
+  /// [4] Derives a device tier from total RAM and CPU core count.
+  /// Thresholds are calibrated for Android phones (A30s = low tier).
+  String _deriveDeviceTier(int? totalRamMb, int? cpuCores) {
+    if (totalRamMb == null) return 'unknown';
+    if (totalRamMb >= 6144 && (cpuCores ?? 0) >= 8) return 'high';
+    if (totalRamMb >= 3072) return 'mid';
+    return 'low';
   }
 
   String _connectivityLabel(List<ConnectivityResult> results) {

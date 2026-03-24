@@ -141,6 +141,18 @@ class _MetaPageState extends State<MetaPage> {
                 'Debug Build': m.isDebugBuild?.toString(),
               },
             ),
+            // [2] Performance metrics
+            _Section(
+              icon: Icons.speed_outlined,
+              title: 'Performance',
+              color: Colors.deepOrange,
+              items: {
+                'Launch Time':
+                m.appLaunchTimeMs != null ? '${m.appLaunchTimeMs} ms' : null,
+                'Frame Drops': m.frameDropCount?.toString(),
+                'Last Crash': m.lastCrashInfo ?? 'None',
+              },
+            ),
             _Section(
               icon: Icons.battery_charging_full_outlined,
               title: 'Battery',
@@ -150,12 +162,17 @@ class _MetaPageState extends State<MetaPage> {
                 'State': m.batteryState,
               },
             ),
+            // [3] Network quality
             _Section(
               icon: Icons.wifi_outlined,
               title: 'Network',
               color: Colors.blue,
               items: {
                 'Connection Type': m.connectionType,
+                'Speed Category': m.networkSpeedCategory,
+                'Latency': m.networkLatencyMs != null
+                    ? '${m.networkLatencyMs} ms'
+                    : null,
                 'WiFi Name (SSID)': m.wifiName,
                 'WiFi BSSID': m.wifiBSSID,
                 'Local IPv4': m.localIpv4,
@@ -170,10 +187,18 @@ class _MetaPageState extends State<MetaPage> {
               items: {
                 'Latitude': m.latitude?.toStringAsFixed(6),
                 'Longitude': m.longitude?.toStringAsFixed(6),
-                'Altitude': m.altitude != null ? '${m.altitude!.toStringAsFixed(1)} m' : null,
-                'Accuracy': m.locationAccuracy != null ? '±${m.locationAccuracy!.toStringAsFixed(1)} m' : null,
-                'Speed': m.speed != null ? '${m.speed!.toStringAsFixed(1)} m/s' : null,
-                'Bearing': m.bearing != null ? '${m.bearing!.toStringAsFixed(1)}°' : null,
+                'Altitude': m.altitude != null
+                    ? '${m.altitude!.toStringAsFixed(1)} m'
+                    : null,
+                'Accuracy': m.locationAccuracy != null
+                    ? '±${m.locationAccuracy!.toStringAsFixed(1)} m'
+                    : null,
+                'Speed': m.speed != null
+                    ? '${m.speed!.toStringAsFixed(1)} m/s'
+                    : null,
+                'Bearing': m.bearing != null
+                    ? '${m.bearing!.toStringAsFixed(1)}°'
+                    : null,
                 'City': m.locality,
                 'State / Region': m.adminArea,
                 'Country': m.country,
@@ -189,9 +214,48 @@ class _MetaPageState extends State<MetaPage> {
                 'Language': m.deviceLanguage,
                 'Locale': m.deviceLocale,
                 'Timezone': m.timezone,
-                // countryCode is geo-derived ("IN") or locale-derived ("GB(locale)")
-                // — the suffix makes the source clear in the UI.
                 'Country Code': m.countryCode,
+              },
+            ),
+            // [4][5][6] Device tier, RAM, disk
+            _Section(
+              icon: Icons.memory_outlined,
+              title: 'Memory & Storage',
+              color: Colors.cyan.shade700,
+              items: {
+                'Device Tier': m.deviceTier,
+                'Total RAM': m.totalRamMb != null ? '${m.totalRamMb} MB' : null,
+                'Available RAM':
+                m.availableRamMb != null ? '${m.availableRamMb} MB' : null,
+                'Total Disk': m.totalDiskMb != null
+                    ? '${(m.totalDiskMb! / 1024).toStringAsFixed(1)} GB'
+                    : null,
+                'Free Disk': m.freeDiskMb != null
+                    ? '${(m.freeDiskMb! / 1024).toStringAsFixed(1)} GB'
+                    : null,
+              },
+            ),
+            // [7] Display refresh rate
+            _Section(
+              icon: Icons.monitor_outlined,
+              title: 'Display',
+              color: Colors.pink,
+              items: {
+                'Width (px)': m.screenWidthPx?.toStringAsFixed(0),
+                'Height (px)': m.screenHeightPx?.toStringAsFixed(0),
+                'Density (dpr)': m.screenDensity?.toStringAsFixed(2),
+                'Refresh Rate': m.displayRefreshRate != null
+                    ? '${m.displayRefreshRate!.toStringAsFixed(0)} Hz'
+                    : null,
+              },
+            ),
+            // [8] Audio output route
+            _Section(
+              icon: Icons.headphones_outlined,
+              title: 'Audio',
+              color: Colors.deepPurple,
+              items: {
+                'Output Route': m.audioOutputRoute,
               },
             ),
             _Section(
@@ -206,12 +270,16 @@ class _MetaPageState extends State<MetaPage> {
               ) ??
                   {},
             ),
+            // [1][9] User behavior & lifecycle
             _Section(
               icon: Icons.access_time_outlined,
               title: 'Session',
               color: Colors.blueGrey,
               items: {
                 'Session Start': m.sessionStart?.toLocal().toString(),
+                'Screen Views': m.sessionScreenViews?.toString(),
+                'User Actions': m.sessionUserActions?.toString(),
+                'Times Backgrounded': m.sessionBackgroundCount?.toString(),
               },
             ),
           ],

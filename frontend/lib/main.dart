@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:frontend/vmaf/vmaf_home.dart';
 import 'package:frontend/peaq/peaq_test.dart';
 import 'package:frontend/pesq/pesq_test.dart';
 import 'package:frontend/IQA/IQA.dart';
-import 'package:frontend/metadata/meta_page.dart'; // 👈 add this file (see below)
+import 'package:frontend/metadata/meta_page.dart';
+import 'metadata/metadata.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SchedulerBinding.instance.addPostFrameCallback((_) {
+    PerformanceTracker.instance.markFirstFrame();
+  });
   runApp(const MyApp());
 }
 
