@@ -39,7 +39,7 @@ dependencies:
   just_audio: ^0.9.42
   image_picker: ^1.0.7
   shared_preferences: ^2.2.2
-  camera: ^0.10.5
+  camera: ^0.11.0
   path: ^1.9.0
   device_info_plus: ^10.1.0
   package_info_plus: ^8.0.0
