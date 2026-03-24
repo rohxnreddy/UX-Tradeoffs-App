@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:frontend/vmaf/vmaf_home.dart';
 import 'package:frontend/peaq/peaq_test.dart';
 import 'package:frontend/pesq/pesq_test.dart';
 import 'package:frontend/IQA/IQA.dart';
+import 'package:frontend/metadata/meta_page.dart';
+import 'metadata/metadata.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SchedulerBinding.instance.addPostFrameCallback((_) {
+    PerformanceTracker.instance.markFirstFrame();
+  });
   runApp(const MyApp());
 }
 
@@ -30,7 +37,7 @@ class HomeNav extends StatefulWidget {
 }
 
 class _HomeNavState extends State<HomeNav> {
-  int _selectedIndex = 1;
+  int _selectedIndex = 0; // 👈 Meta page opens first
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   void _onItemSelected(int index) {
@@ -46,18 +53,27 @@ class _HomeNavState extends State<HomeNav> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          // Pass the callback to open the drawer
+          // ── 0 · Meta ─────────────────────────────────────────────
+          _buildPageScaffold(
+            title: 'Device Meta',
+            icon: Icons.phone_android_outlined,
+            body: const MetaPage(),
+          ),
+          // ── 1 · VMAF ─────────────────────────────────────────────
           VmafHome(onMenuPressed: () => _scaffoldKey.currentState?.openDrawer()),
+          // ── 2 · PEAQ ─────────────────────────────────────────────
           _buildPageScaffold(
             title: 'PEAQ — Audio Quality',
             icon: Icons.music_note_outlined,
             body: const PeaqTestScreen(),
           ),
+          // ── 3 · PESQ ─────────────────────────────────────────────
           _buildPageScaffold(
             title: 'PESQ — Speech Quality',
             icon: Icons.record_voice_over_outlined,
             body: const PesqTestScreen(),
           ),
+          // ── 4 · IQA ──────────────────────────────────────────────
           _buildPageScaffold(
             title: 'IQA — Image Quality',
             icon: Icons.image_outlined,
@@ -122,28 +138,34 @@ class _HomeNavState extends State<HomeNav> {
             ),
           ),
           _buildDrawerItem(
+            icon: Icons.phone_android_outlined,
+            title: 'Device Meta',
+            subtitle: 'Device & User Metadata',
+            index: 0,
+          ),
+          _buildDrawerItem(
             icon: Icons.videocam_outlined,
             title: 'VMAF',
             subtitle: 'Video Quality Assessment',
-            index: 0,
+            index: 1,
           ),
           _buildDrawerItem(
             icon: Icons.music_note_outlined,
             title: 'PEAQ',
             subtitle: 'Audio Quality Assessment',
-            index: 1,
+            index: 2,
           ),
           _buildDrawerItem(
             icon: Icons.record_voice_over_outlined,
             title: 'PESQ',
             subtitle: 'Speech Quality Assessment',
-            index: 2,
+            index: 3,
           ),
           _buildDrawerItem(
             icon: Icons.image_outlined,
             title: 'IQA',
             subtitle: 'Image Quality Assessment',
-            index: 3,
+            index: 4,
           ),
         ],
       ),
