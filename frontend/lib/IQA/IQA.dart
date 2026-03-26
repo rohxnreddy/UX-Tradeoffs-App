@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-
+import 'package:frontend/metadata/metadata.dart';
 // ─────────────────────────────────────────────────────────────────
 //  Full-screen camera preview / capture
 // ─────────────────────────────────────────────────────────────────
@@ -223,7 +223,6 @@ class _IQAPageState extends State<IQAPage> {
   // ── Send to API ───────────────────────────────────────────────
 
   Future<void> _sendToAPI() async {
-    // Build ordered list of (label, file) for images that were captured
     final toSend = <MapEntry<String, File>>[];
     if (_rearImage  != null) toSend.add(MapEntry('Rear Camera',  _rearImage!));
     if (_frontImage != null) toSend.add(MapEntry('Front Camera', _frontImage!));
@@ -234,6 +233,10 @@ class _IQAPageState extends State<IQAPage> {
 
     try {
       final req = http.MultipartRequest('POST', Uri.parse('$_apiBaseUrl/iqa/score'));
+      if (activeSessionId != null) {
+        req.headers['X-Session-Id'] = activeSessionId!;
+      }
+
       for (final e in toSend) {
         req.files.add(await http.MultipartFile.fromPath('images', e.value.path));
       }

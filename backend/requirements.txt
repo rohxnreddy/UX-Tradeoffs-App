@@ -13,3 +13,4 @@ opencv-python
 scikit-image
 pyiqa
 torch
+aysncpg

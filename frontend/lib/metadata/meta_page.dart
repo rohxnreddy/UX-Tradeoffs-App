@@ -14,29 +14,64 @@ class _MetaPageState extends State<MetaPage> {
   DeviceMeta? _meta;
   bool _loading = true;
   String? _error;
+  String? _locationError;
+  String? _sendError;
+  static bool _hasSent = false; // guard: only auto-send once per app lifetime (static survives rebuilds/hot-reload)
+  bool _collectInProgress = false;  // guard: prevent concurrent collect() calls
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(autoSend: true);
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool autoSend = false}) async {
+    // Prevent two simultaneous collect() calls (e.g. initState + pull-to-refresh race).
+    if (_collectInProgress) return;
+    _collectInProgress = true;
+
     setState(() {
       _loading = true;
       _error = null;
+      _locationError = null;
+      _sendError = null;
     });
     try {
-      final meta = await MetaCollector.instance.collect(includeLocation: true);
+      // First automatic load: use the session-cached collect() so that only
+      // one DB row is ever written, even if multiple widgets call this.
+      // Manual refresh: use collectFresh() to get updated data without sending.
+      final meta = autoSend
+          ? await MetaCollector.instance.collect(includeLocation: true)
+          : await MetaCollector.instance.collectFresh(includeLocation: true);
+
+      // Send to server only on first automatic load, never on manual refresh.
+      // This prevents duplicate DB rows from hot-reload / widget rebuilds.
+      if (autoSend && !_hasSent) {
+        _hasSent = true;
+        try {
+          await sendMetadata(meta);
+        } catch (e) {
+          setState(() => _sendError = 'Upload failed: $e');
+        }
+      }
+
+      final hasLocation = meta.latitude != null || meta.longitude != null;
       setState(() {
         _meta = meta;
         _loading = false;
+        if (!hasLocation) {
+          _locationError =
+          'Location unavailable — ensure GPS is enabled and the '
+              'location permission is granted, then pull to refresh.';
+        }
       });
     } catch (e) {
       setState(() {
         _error = e.toString();
         _loading = false;
       });
+    } finally {
+      _collectInProgress = false;
     }
   }
 
@@ -96,10 +131,22 @@ class _MetaPageState extends State<MetaPage> {
         label: const Text('Copy JSON'),
       ),
       body: RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: () => _load(autoSend: false),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           children: [
+            if (_sendError != null)
+              _BannerCard(
+                icon: Icons.cloud_off,
+                color: Colors.orange,
+                message: _sendError!,
+              ),
+            if (_locationError != null)
+              _BannerCard(
+                icon: Icons.location_off,
+                color: Colors.red,
+                message: _locationError!,
+              ),
             _Section(
               icon: Icons.phone_android,
               title: 'Device Hardware',
@@ -281,6 +328,50 @@ class _MetaPageState extends State<MetaPage> {
                 'User Actions': m.sessionUserActions?.toString(),
                 'Times Backgrounded': m.sessionBackgroundCount?.toString(),
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Banner card — shown when upload or location collection fails
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BannerCard extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String message;
+
+  const _BannerCard({
+    required this.icon,
+    required this.color,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      color: color.withOpacity(0.07),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: color.withOpacity(0.3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(color: color.withOpacity(0.9), fontSize: 13),
+              ),
             ),
           ],
         ),
