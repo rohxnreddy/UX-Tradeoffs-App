@@ -5,7 +5,7 @@ import 'package:frontend/peaq/peaq_test.dart';
 import 'package:frontend/pesq/pesq_test.dart';
 import 'package:frontend/IQA/IQA.dart';
 import 'package:frontend/metadata/meta_page.dart';
-import 'metadata/metadata.dart';
+import 'package:frontend/metadata/metadata.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,8 +37,14 @@ class HomeNav extends StatefulWidget {
 }
 
 class _HomeNavState extends State<HomeNav> {
-  int _selectedIndex = 0; // 👈 Meta page opens first
+  int _selectedIndex = 0; //
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   void _onItemSelected(int index) {
     setState(() => _selectedIndex = index);

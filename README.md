@@ -1,49 +1,55 @@
 # UX-TRADEOFFS-APP
 
-A full-stack application Built with FastAPI backend and Flutter frontend.
+A full-stack application built with a FastAPI backend and Flutter frontend.
 
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 UX-TRADEOFFS-APP/
 ├── backend/
-│   ├── src/
+│   ├── main.py
+│   ├── requirements.txt
+│   ├── peaq-pesq-audio/
+│   └── src/
+│       ├── app.py                 
+│       ├── db/
+│       │   ├── database.py         
+│       │   ├── repository.py      
+│       │   ├── schemas.py          
+│       │   ├── schema.sql          
+│       │   └── dashboard.py        
+│       ├── vmaf/
+│       │   ├── reference.mp4
+│       │   └── vmaf.py
+│       ├── peaq/
+│       │   └── peaq.py
+│       ├── pesq_module/
+│       │   └── pesq_score.py
+│       ├── webrtc/
+│       │   └── codec_call.py
+│       └── IMA/
+│           └── IMA.py
+├── frontend/
+│   ├── lib/
+│   │   ├── main.dart
 │   │   ├── vmaf/
-│   │   │   ├── __pycache__/
-│   │   │   ├── reference.mp4       # Reference video for comparison
-│   │   │   └── vmaf.py            # VMAF computation module
-│   │   ├── app.py                 # FastAPI application
-│   │   ├── database_schemas.py    # Database schema definitions
-│   │   ├── database.py            # Database connection & ORM
-│   │   └── schemas.py             # Pydantic models
-│   ├── venv/                      # Python virtual environment
-│   ├── .env                       # Environment variables
-│   ├── main.py                    # Application entry point
-│   └── requirements.txt           # Python dependencies
-│
-└── frontend/
-    ├── lib/
-    │   └── vmaf/
-    │       ├── vmaf.dart          # VMAF service module
-    │       └── app.dart           # Main app module
-    ├── android/                   # Android-specific files
-    ├── ios/                       # iOS-specific files
-    ├── assets/                    # Static assets
-    ├── build/                     # Build artifacts
-    ├── test/                      # Unit tests
-    ├── .metadata
-    ├── analysis_options.yaml      # Dart analyzer config
-    ├── pubspec.yaml              # Flutter dependencies
-    └── README.md
+│   │   ├── peaq/
+│   │   ├── pesq/
+│   │   ├── IQA/
+│   │   └── metadata/
+│   ├── assets/
+│   ├── android/
+│   ├── ios/
+│   └── web/
 ```
 
-## 🔧 Prerequisites
+## Prerequisites
 
 ### Backend Requirements
 - **Python**: 3.8 or higher
 - **FFmpeg**: With VMAF support (libvmaf)
-- **Database**: PostgreSQL SDK
+- **Database**: PostgreSQL (via `DATABASE_URL`)
 
 ### Frontend Requirements
 - **Flutter SDK**: 3.0 or higher
@@ -52,7 +58,7 @@ UX-TRADEOFFS-APP/
   - Android Studio (for Android)
   - Xcode (for iOS, macOS only)
 
-##  Backend Setup
+## Backend Setup
 
 ### 1. Install FFmpeg with VMAF Support
 
@@ -100,19 +106,40 @@ pip install -r requirements.txt
 ```
 
 
-### 4. Configure Environment Variables
+### 4. Database Setup (PostgreSQL)
 
-Create `.env` file in `backend/`:
+The backend expects a PostgreSQL connection string in `DATABASE_URL`.
+
+1) Create a database + user (example)
+
 ```bash
+createdb ux_tradeoffs
+createuser ux_tradeoffs_user
+psql -d ux_tradeoffs -c "GRANT ALL PRIVILEGES ON DATABASE ux_tradeoffs TO ux_tradeoffs_user;"
+```
+
+2) Create `backend/.env`
+
+```bash
+cd backend
 touch .env
 ```
 
-Add configuration:
+Example `.env`:
+
 ```env
-POSTGRES_USERNAME="your_username"
-POSTGRES_PASSWORD="your_password"
-POSTGRES_DB="db_name"
+DATABASE_URL="postgresql://ux_tradeoffs_user:your_password@localhost:5432/ux_tradeoffs"
 ```
+
+3) Apply the schema
+
+```bash
+psql "$DATABASE_URL" -f src/db/schema.sql
+```
+
+Notes:
+- The schema enables `pgcrypto` (`CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";`). If you get a permissions error, run the schema as a superuser or ask your DB admin to enable the extension.
+- Quick check: `psql "$DATABASE_URL" -c "\\dt"`
 
 ### 5. Run the Backend Server
 
@@ -128,7 +155,7 @@ python main.py
 
 
 
-## 📱 Frontend Setup
+## Frontend Setup
 
 ### 1. Install Flutter
 

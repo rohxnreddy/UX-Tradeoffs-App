@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -9,8 +12,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Holds all collected device & user metadata.
+
+String? activeSessionId;
 class DeviceMeta {
   // ── Device Hardware ──────────────────────────────────────────────
   final String? deviceModel;
@@ -256,6 +261,25 @@ class DeviceMeta {
   };
 }
 
+String _apiBaseUrl = 'http://192.168.0.101:8000';
+Future<void> sendMetadata(DeviceMeta meta) async {
+  final response = await http.post(
+    Uri.parse('$_apiBaseUrl/device/metadata'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode(meta.toJson()),
+  );
+  if (response.statusCode != 200) {
+    throw Exception('Failed to send metadata: ${response.body}');
+  }
+  // Parse and save session_id for all subsequent requests
+  final data = jsonDecode(response.body);
+  final sessionId = data['session_id'] as String?;
+  if (sessionId != null) {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('session_id', sessionId);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Session tracker — a lightweight singleton updated by the app as events occur.
 // Wire it up in your route observer and lifecycle mixin.
@@ -329,11 +353,31 @@ class MetaCollector {
   // Public entry point
   // ──────────────────────────────────────────────────────────────────
 
-  /// Collects all available metadata.
+  // Permanently cached Future — never cleared after completion.
+  // This guarantees that no matter how many times collect() is called
+  // (concurrent, sequential, new widget instances), exactly one _doCollect()
+  // runs and exactly one sendMetadata() fires per app session.
+  //
+  // Pull-to-refresh in MetaPage uses _doCollect() directly and does NOT
+  // call sendMetadata(), so skipping the cache there is intentional.
+  Future<DeviceMeta>? _collectFuture;
+
+  /// Returns metadata for this session.
   ///
-  /// [includeLocation] — pass true only after the user has been
-  /// informed; triggers the system GPS permission prompt if needed.
-  Future<DeviceMeta> collect({bool includeLocation = false}) async {
+  /// The first call starts collection (including GPS if [includeLocation] is
+  /// true). Every subsequent call — from any widget or service — receives the
+  /// same Future, so only one DB row is ever written.
+  ///
+  /// For manual refresh (no DB write), call [collectFresh] instead.
+  Future<DeviceMeta> collect({bool includeLocation = false}) =>
+      _collectFuture ??= _doCollect(includeLocation: includeLocation);
+
+  /// Runs a fresh collection without touching the session cache or sending
+  /// to the server. Used by pull-to-refresh in MetaPage.
+  Future<DeviceMeta> collectFresh({bool includeLocation = false}) =>
+      _doCollect(includeLocation: includeLocation);
+
+  Future<DeviceMeta> _doCollect({bool includeLocation = false}) async {
     // Screen metrics must be read synchronously on the main thread.
     final screenData = _collectScreenMetrics();
 
@@ -585,7 +629,7 @@ class MetaCollector {
   Future<Map<String, dynamic>> _collectLocation() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return {};
+      if (!serviceEnabled) return {'_location_error': 'service_disabled'};
 
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
@@ -593,12 +637,21 @@ class MetaCollector {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        return {};
+        return {'_location_error': 'permission_${permission.name}'};
       }
 
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      // LocationAccuracy.high requires GPS satellite lock and hangs indefinitely
+      // without timeLimit. Use medium + 10 s timeout, fall back to last known.
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 10),
+        );
+      } on TimeoutException {
+        pos = await Geolocator.getLastKnownPosition();
+      }
+      if (pos == null) return {'_location_error': 'no_position_available'};
 
       String? locality, country, postalCode, adminArea, isoCountryCode;
       try {
@@ -627,8 +680,8 @@ class MetaCollector {
         'admin_area':       adminArea,
         'iso_country_code': isoCountryCode,
       };
-    } catch (_) {
-      return {};
+    } catch (e) {
+      return {'_location_error': e.toString()};
     }
   }
 
