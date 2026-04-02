@@ -7,7 +7,6 @@ import 'dart:io';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:frontend/metadata/metadata.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,8 +19,7 @@ class MetricRunnerHome extends StatefulWidget {
 
 class _MetricRunnerHomeState extends State<MetricRunnerHome> {
   final Battery _battery = Battery();
-  final TextEditingController _apiController =
-      TextEditingController(text: 'http://192.168.0.101:8000');
+  static const String _defaultApiBaseUrl = 'http://192.168.0.101:8000';
 
   final List<_StepResult> _results = <_StepResult>[];
   final List<Isolate> _cpuIsolates = <Isolate>[];
@@ -75,10 +73,6 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
       await _runStep(
         title: 'Backend reachability',
         action: _testBackend,
-      );
-      await _runStep(
-        title: 'Device metadata capture',
-        action: _testMetadataCapture,
       );
       await _runStep(
         title: 'Network strength and quality',
@@ -137,11 +131,7 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
   }
 
   Future<String> _testBackend() async {
-    final base = _apiController.text.trim();
-    if (base.isEmpty) {
-      throw Exception('API base URL is empty');
-    }
-
+    final base = _defaultApiBaseUrl;
     final root = await http
         .get(Uri.parse('$base/'))
         .timeout(const Duration(seconds: 5));
@@ -160,16 +150,6 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
     }
 
     return 'Root OK (${root.statusCode}), /audio/peaq ${peaq.statusCode}, /audio/pesq ${pesq.statusCode}.';
-  }
-
-  Future<String> _testMetadataCapture() async {
-    final meta = await MetaCollector.instance.collectFresh(includeLocation: true);
-    try {
-      await sendMetadata(meta);
-      return 'Metadata captured and sent to backend successfully.';
-    } catch (_) {
-      return 'Metadata captured locally; upload failed (non-blocking).';
-    }
   }
 
   Future<String> _testNetworkStrengthAndFluctuation() async {
@@ -366,7 +346,6 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
 
   @override
   void dispose() {
-    _apiController.dispose();
     _stopBackgroundLoad();
     super.dispose();
   }
@@ -391,18 +370,8 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Runs backend, metadata, network quality, and battery load checks in sequence. '
+                      'Runs backend, network quality, and battery load checks in sequence. '
                       'Background-safe tasks run concurrently where possible.',
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _apiController,
-                      enabled: !_isRunning,
-                      decoration: const InputDecoration(
-                        labelText: 'Python backend URL',
-                        hintText: 'http://192.168.x.x:8000',
-                        border: OutlineInputBorder(),
-                      ),
                     ),
                     const SizedBox(height: 12),
                     FilledButton.icon(
