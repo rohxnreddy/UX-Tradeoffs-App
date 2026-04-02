@@ -22,6 +22,7 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
   static const String _defaultApiBaseUrl = 'http://192.168.0.101:8000';
 
   final List<_StepResult> _results = <_StepResult>[];
+  final List<_StepResult> _workingResults = <_StepResult>[];
   final List<Isolate> _cpuIsolates = <Isolate>[];
   final List<int> _latencySamples = <int>[];
   final List<double> _downloadMbpsSamples = <double>[];
@@ -30,6 +31,8 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
   bool _isRunning = false;
   int? _startBattery;
   int? _endBattery;
+  BatteryState? _startBatteryState;
+  BatteryState? _endBatteryState;
   String _progressText = 'Ready';
   DateTime? _runStartedAt;
   DateTime? _runEndedAt;
@@ -54,6 +57,7 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
     setState(() {
       _isRunning = true;
       _results.clear();
+      _workingResults.clear();
       _latencySamples.clear();
       _downloadMbpsSamples.clear();
       _runStartedAt = DateTime.now();
@@ -63,10 +67,12 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
 
     try {
       _startBattery = await _safeBatteryLevel();
-      _addResult(
+      _startBatteryState = await _safeBatteryState();
+      _addWorkingResult(
         _StepResult.pass(
           title: 'Initial battery snapshot',
-          detail: 'Battery at start: ${_startBattery ?? 'Unknown'}%',
+          detail: 'Battery at start: ${_startBattery ?? 'Unknown'}% '
+              '(state: ${_startBatteryState?.name ?? 'unknown'})',
         ),
       );
 
@@ -88,19 +94,40 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
       );
 
       _endBattery = await _safeBatteryLevel();
+      _endBatteryState = await _safeBatteryState();
+      _runEndedAt = DateTime.now();
       final delta = (_startBattery != null && _endBattery != null)
           ? (_startBattery! - _endBattery!)
           : null;
-      _addResult(
+      final elapsedMinutes = (_runStartedAt != null && _runEndedAt != null)
+          ? _runEndedAt!.difference(_runStartedAt!).inSeconds / 60.0
+          : null;
+      final drainPerMinute =
+          (delta != null && elapsedMinutes != null && elapsedMinutes > 0)
+              ? delta / elapsedMinutes
+              : null;
+      _addWorkingResult(
         _StepResult.pass(
           title: 'Final battery snapshot',
           detail: delta == null
-              ? 'End battery: ${_endBattery ?? 'Unknown'}%'
-              : 'End battery: $_endBattery% (drain: $delta%)',
+              ? 'End battery: ${_endBattery ?? 'Unknown'}% '
+                  '(state: ${_endBatteryState?.name ?? 'unknown'})'
+              : 'End battery: $_endBattery% (drain: $delta%, '
+                  'drain rate: ${drainPerMinute?.toStringAsFixed(3) ?? 'N/A'} %/min, '
+                  'state: ${_endBatteryState?.name ?? 'unknown'})',
+        ),
+      );
+      _addWorkingResult(
+        _StepResult.pass(
+          title: 'Battery score',
+          detail: drainPerMinute == null
+              ? 'Score unavailable (insufficient timing/battery data).'
+              : 'Battery drain score: ${drainPerMinute.toStringAsFixed(3)} %/min '
+                  '(lower is better).',
         ),
       );
     } catch (e) {
-      _addResult(
+      _addWorkingResult(
         _StepResult.fail(
           title: 'Runner failure',
           detail: e.toString(),
@@ -108,8 +135,11 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
       );
     } finally {
       _stopBackgroundLoad();
-      _runEndedAt = DateTime.now();
+      _runEndedAt ??= DateTime.now();
       _progressText = 'Test suite completed';
+      _results
+        ..clear()
+        ..addAll(_workingResults);
       await _persistResults();
       if (mounted) {
         setState(() => _isRunning = false);
@@ -124,9 +154,9 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
     setState(() => _progressText = 'Running: $title');
     try {
       final detail = await action();
-      _addResult(_StepResult.pass(title: title, detail: detail));
+      _addWorkingResult(_StepResult.pass(title: title, detail: detail));
     } catch (e) {
-      _addResult(_StepResult.fail(title: title, detail: e.toString()));
+      _addWorkingResult(_StepResult.fail(title: title, detail: e.toString()));
     }
   }
 
@@ -233,6 +263,14 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
     }
   }
 
+  Future<BatteryState?> _safeBatteryState() async {
+    try {
+      return await _battery.batteryState;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<int?> _measureLatencyMs() async {
     try {
       final sw = Stopwatch()..start();
@@ -323,11 +361,8 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
     return sumDiff / (values.length - 1);
   }
 
-  void _addResult(_StepResult result) {
-    if (!mounted) {
-      return;
-    }
-    setState(() => _results.add(result));
+  void _addWorkingResult(_StepResult result) {
+    _workingResults.add(result);
   }
 
   Future<void> _persistResults() async {
@@ -337,6 +372,11 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
       'ended_at': _runEndedAt?.toIso8601String(),
       'battery_start': _startBattery,
       'battery_end': _endBattery,
+      'battery_start_state': _startBatteryState?.name,
+      'battery_end_state': _endBatteryState?.name,
+      'elapsed_seconds': _runStartedAt != null && _runEndedAt != null
+          ? _runEndedAt!.difference(_runStartedAt!).inSeconds
+          : null,
       'results': _results
           .map((e) => {'title': e.title, 'ok': e.ok, 'detail': e.detail})
           .toList(),
@@ -386,7 +426,18 @@ class _MetricRunnerHomeState extends State<MetricRunnerHome> {
               ),
             ),
             const SizedBox(height: 12),
-            if (_results.isNotEmpty)
+            if (_isRunning)
+              Card(
+                color: Colors.amber.shade50,
+                child: const ListTile(
+                  leading: Icon(Icons.hourglass_top),
+                  title: Text('Tests are running sequentially'),
+                  subtitle: Text(
+                    'Results will be shown here after all tests complete.',
+                  ),
+                ),
+              ),
+            if (_results.isNotEmpty && !_isRunning)
               ..._results.map(
                 (r) => Card(
                   child: ListTile(

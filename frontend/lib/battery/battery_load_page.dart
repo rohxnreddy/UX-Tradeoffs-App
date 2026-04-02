@@ -24,12 +24,22 @@ class _BatteryLoadPageState extends State<BatteryLoadPage> {
 
   Timer? _batteryTimer;
   Timer? _networkTimer;
+  StreamSubscription<BatteryState>? _batteryStateSubscription;
 
   bool _isRunning = false;
   bool _networkLoadEnabled = true;
   bool _sensorLoadEnabled = true;
 
   int _batteryLevel = 0;
+  int? _startBatteryLevel;
+  int? _endBatteryLevel;
+  BatteryState? _currentBatteryState;
+  BatteryState? _startBatteryState;
+  BatteryState? _endBatteryState;
+  int? _minBatteryLevel;
+  int? _maxBatteryLevel;
+  DateTime? _testStartedAt;
+  DateTime? _testEndedAt;
   String _statusText = 'Idle';
 
   static void _cpuBurn(dynamic message) {
@@ -48,6 +58,7 @@ class _BatteryLoadPageState extends State<BatteryLoadPage> {
   void initState() {
     super.initState();
     _startBatteryMonitor();
+    _listenBatteryState();
   }
 
   Future<void> _startBatteryMonitor() async {
@@ -64,7 +75,15 @@ class _BatteryLoadPageState extends State<BatteryLoadPage> {
       if (!mounted) {
         return;
       }
-      setState(() => _batteryLevel = level);
+      setState(() {
+        _batteryLevel = level;
+        _minBatteryLevel = _minBatteryLevel == null
+            ? level
+            : (_minBatteryLevel! < level ? _minBatteryLevel : level);
+        _maxBatteryLevel = _maxBatteryLevel == null
+            ? level
+            : (_maxBatteryLevel! > level ? _maxBatteryLevel : level);
+      });
     } catch (_) {
       if (!mounted) {
         return;
@@ -81,6 +100,14 @@ class _BatteryLoadPageState extends State<BatteryLoadPage> {
     setState(() {
       _isRunning = true;
       _statusText = 'Running load test';
+      _testStartedAt = DateTime.now();
+      _testEndedAt = null;
+      _startBatteryLevel = _batteryLevel;
+      _endBatteryLevel = null;
+      _startBatteryState = _currentBatteryState;
+      _endBatteryState = null;
+      _minBatteryLevel = _batteryLevel;
+      _maxBatteryLevel = _batteryLevel;
     });
 
     await _startCpuBurn();
@@ -137,16 +164,57 @@ class _BatteryLoadPageState extends State<BatteryLoadPage> {
     if (!mounted) {
       return;
     }
+    final now = DateTime.now();
+    final endLevel = _batteryLevel;
+    final elapsedMinutes = _testStartedAt == null
+        ? null
+        : now.difference(_testStartedAt!).inSeconds / 60.0;
+    final drop = (_startBatteryLevel != null) ? _startBatteryLevel! - endLevel : null;
+    final rate = (drop != null && elapsedMinutes != null && elapsedMinutes > 0)
+        ? drop / elapsedMinutes
+        : null;
     setState(() {
       _isRunning = false;
-      _statusText = 'Stopped';
+      _testEndedAt = now;
+      _endBatteryLevel = endLevel;
+      _endBatteryState = _currentBatteryState;
+      _statusText = drop == null
+          ? 'Stopped'
+          : 'Stopped. Drain: $drop% in ${elapsedMinutes?.toStringAsFixed(2) ?? 'N/A'} min '
+              '(${rate?.toStringAsFixed(3) ?? 'N/A'} %/min)';
     });
+  }
+
+  void _listenBatteryState() {
+    _batteryStateSubscription = _battery.onBatteryStateChanged.listen((state) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _currentBatteryState = state);
+    });
+  }
+
+  String _batterySummaryText() {
+    if (_testStartedAt == null || _endBatteryLevel == null || _startBatteryLevel == null) {
+      return 'Run a test to compute drain score and battery analytics.';
+    }
+    final elapsedMinutes = _testEndedAt == null
+        ? DateTime.now().difference(_testStartedAt!).inSeconds / 60.0
+        : _testEndedAt!.difference(_testStartedAt!).inSeconds / 60.0;
+    final drop = _startBatteryLevel! - _endBatteryLevel!;
+    final drainPerMinute = elapsedMinutes > 0 ? drop / elapsedMinutes : 0.0;
+    return 'Start: $_startBatteryLevel% (${_startBatteryState?.name ?? 'unknown'})  '
+        'End: $_endBatteryLevel% (${_endBatteryState?.name ?? 'unknown'})\n'
+        'Drop: $drop%  Duration: ${elapsedMinutes.toStringAsFixed(2)} min  '
+        'Drain score: ${drainPerMinute.toStringAsFixed(3)} %/min\n'
+        'Min/Max observed: ${_minBatteryLevel ?? '-'}% / ${_maxBatteryLevel ?? '-'}%';
   }
 
   @override
   void dispose() {
     _stopLoadTest();
     _batteryTimer?.cancel();
+    _batteryStateSubscription?.cancel();
     super.dispose();
   }
 
@@ -179,6 +247,11 @@ class _BatteryLoadPageState extends State<BatteryLoadPage> {
                       Chip(label: Text('Battery: $_batteryLevel%')),
                       Chip(
                         label: Text(
+                          'State: ${_currentBatteryState?.name ?? 'unknown'}',
+                        ),
+                      ),
+                      Chip(
+                        label: Text(
                           _isRunning ? 'Status: Running' : 'Status: Stopped',
                         ),
                       ),
@@ -186,6 +259,8 @@ class _BatteryLoadPageState extends State<BatteryLoadPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(_statusText),
+                  const SizedBox(height: 8),
+                  Text(_batterySummaryText()),
                 ],
               ),
             ),
