@@ -37,6 +37,7 @@ dependencies:
   permission_handler: ^12.0.1
   record: ^6.0.0
   just_audio: ^0.9.42
+  audio_session: ^0.1.25
   image_picker: ^1.0.7
   shared_preferences: ^2.2.2
   camera: ^0.11.0

@@ -198,7 +198,8 @@ async def insert_peaq_result(
 ) -> UUID:
     """
     result is whatever compute_peaq_odg() returns.
-    Expected keys: odg_score, odg_label, subtracted_audio_b64 (optional)
+    Expected keys: odg_score (wiener), raw_odg, ffmpeg_odg,
+                   odg_label, subtracted_audio_b64 (optional)
     """
     pool = await get_pool()
     has_noise = noise_filename is not None
@@ -206,10 +207,10 @@ async def insert_peaq_result(
         """
         INSERT INTO peaq_results (
             session_id, degraded_filename, noise_filename,
-            has_noise_reduction, odg_score, odg_label,
-            subtracted_audio_b64, raw_output
+            has_noise_reduction, odg_score, raw_odg, ffmpeg_odg,
+            odg_label, subtracted_audio_b64, raw_output
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
         RETURNING id
         """,
         session_id,
@@ -217,6 +218,8 @@ async def insert_peaq_result(
         noise_filename,
         has_noise,
         result.get("odg_score"),
+        result.get("raw_odg"),
+        result.get("ffmpeg_odg"),
         result.get("odg_label"),
         result.get("subtracted_audio_b64"),
         _jsonb(result),
@@ -224,47 +227,9 @@ async def insert_peaq_result(
     return row["id"]
 
 
-# ─── 4. PESQ ──────────────────────────────────────────────────────────────────
+# ─── 4. PESQ (Formerly WebRTC) ──────────────────────────────────────────────────
 
-async def insert_pesq_result(
-    *,
-    session_id: Optional[UUID],
-    degraded_filename: Optional[str],
-    test_type: str = "upload",        # "upload" | "comparison" | "webrtc_simulated"
-    result: dict,
-) -> UUID:
-    """
-    result expected keys: pesq_wb, pesq_nb
-    For comparison results also: wb_codec, nb_codec, sample_rate_hz
-    """
-    pool = await get_pool()
-    row = await pool.fetchrow(
-        """
-        INSERT INTO pesq_results (
-            session_id, degraded_filename, test_type,
-            pesq_wb, pesq_nb,
-            wb_codec, nb_codec, sample_rate_hz,
-            raw_output
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
-        RETURNING id
-        """,
-        session_id,
-        degraded_filename,
-        test_type,
-        result.get("pesq_wb"),
-        result.get("pesq_nb"),
-        result.get("wb_codec"),
-        result.get("nb_codec"),
-        result.get("sample_rate_hz"),
-        _jsonb(result),
-    )
-    return row["id"]
-
-
-# ─── 5. WebRTC ────────────────────────────────────────────────────────────────
-
-async def insert_webrtc_result(
+async def insert_pesq_result_from_webrtc(
     *,
     session_id: Optional[UUID],
     call_type: str = "simulated",     # "simulated" | "device"
@@ -272,17 +237,18 @@ async def insert_webrtc_result(
     result: dict,
 ) -> UUID:
     """
-    result expected keys: opus_pesq_wb, opus_pesq_nb,
-                          g711_pesq_wb, g711_pesq_nb,
-                          degraded_audio_b64 (optional)
+    result expected keys (nested mappings):
+    - direct_recording (hardware only)
+    - traditional_narrowband (G.711 / PSTN)
+    - volte_wideband (AMR-WB / VoLTE)
+    - voip_wideband (Opus / VoIP)
     """
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        INSERT INTO webrtc_results (
+        INSERT INTO pesq_results (
             session_id, call_type, recorded_filename,
-            opus_pesq_wb, opus_pesq_nb,
-            g711_pesq_wb, g711_pesq_nb,
+            direct_pesq, pstn_pesq, volte_pesq, voip_pesq,
             degraded_audio_b64, raw_output
         )
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
@@ -291,10 +257,10 @@ async def insert_webrtc_result(
         session_id,
         call_type,
         recorded_filename,
-        result.get("opus_pesq_wb"),
-        result.get("opus_pesq_nb"),
-        result.get("g711_pesq_wb"),
-        result.get("g711_pesq_nb"),
+        result.get("direct_recording", {}).get("pesq_score"),
+        result.get("traditional_narrowband", {}).get("pesq_score"),
+        result.get("volte_wideband", {}).get("pesq_score"),
+        result.get("voip_wideband", {}).get("pesq_score"),
         result.get("degraded_audio_b64"),
         _jsonb(result),
     )

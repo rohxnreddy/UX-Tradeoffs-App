@@ -5,6 +5,8 @@ import wave
 import struct
 import base64
 import io
+import subprocess
+import tempfile
 
 
 class PEAQError(Exception):
@@ -129,6 +131,59 @@ def spectral_subtract(
     return cleaned
 
 
+def ffmpeg_denoise(
+    degraded_path: str | Path,
+    noise_reduction_db: float = 12.0,
+    noise_floor: float = -25.0,
+) -> np.ndarray | None:
+    """
+    Denoise audio using FFmpeg's afftdn filter.
+
+    Uses FFT-based noise reduction that automatically estimates
+    and removes background noise. No separate noise sample needed.
+
+    Parameters:
+        degraded_path: Path to the degraded WAV file
+        noise_reduction_db: Amount of noise reduction in dB (higher = more aggressive)
+        noise_floor: Noise floor in dB (signals below this are treated as noise)
+
+    Returns:
+        Cleaned audio as float64 numpy array, or None if ffmpeg fails
+    """
+    degraded_path = Path(degraded_path)
+    if not degraded_path.exists():
+        return None
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        output_path = Path(tmp.name)
+
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(degraded_path),
+            "-af", f"afftdn=nf={noise_floor}:nr={noise_reduction_db}:nt=w",
+            str(output_path),
+        ]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            print(f"FFmpeg denoise failed: {result.stderr.decode()}")
+            return None
+
+        # Load the cleaned output
+        cleaned, sr = _load_wav(output_path)
+        return cleaned
+
+    except Exception as e:
+        print(f"FFmpeg denoise error: {e}")
+        return None
+    finally:
+        output_path.unlink(missing_ok=True)
+
+
 def compute_peaq_odg(
     degraded_audio: str | Path,
     reference_audio: str | Path = REFERENCE_AUDIO,
@@ -183,45 +238,76 @@ def compute_peaq_odg(
             num_samples = int(len(noise) * fs_ref / fs_noise)
             noise = resample(noise, num_samples)
 
-        # Perform spectral subtraction
+        # Perform Wiener spectral subtraction
         subtracted = spectral_subtract(deg, noise, fs_ref)
         details["noise_duration"] = round(len(noise) / fs_ref, 2)
         details["spectral_subtraction"] = True
 
-        # Encode subtracted audio as base64 WAV
+        # Encode Wiener-subtracted audio as base64 WAV
         subtracted_wav = _write_wav_bytes(subtracted, fs_ref)
         result["subtracted_audio_b64"] = base64.b64encode(subtracted_wav).decode("ascii")
 
-        # Use subtracted audio for scoring
-        deg = subtracted
+        # Also run FFmpeg afftdn denoising on the degraded audio
+        ffmpeg_cleaned = ffmpeg_denoise(deg_path)
+        if ffmpeg_cleaned is not None:
+            # Resample to match reference if needed
+            if len(ffmpeg_cleaned) != len(deg):
+                ffmpeg_cleaned = ffmpeg_cleaned[:len(deg)] if len(ffmpeg_cleaned) > len(deg) else np.pad(ffmpeg_cleaned, (0, len(deg) - len(ffmpeg_cleaned)))
+            ffmpeg_wav = _write_wav_bytes(ffmpeg_cleaned, fs_ref)
+            result["ffmpeg_audio_b64"] = base64.b64encode(ffmpeg_wav).decode("ascii")
+            details["ffmpeg_denoise"] = True
 
-    # Trim to shortest length
+        # --- Compute separate ODG scores ---
+
+        # 1. Wiener subtracted ODG
+        wiener_odg, wiener_lsd = _compute_odg(ref, subtracted, fs_ref)
+        result["wiener_odg"] = round(wiener_odg, 3)
+        result["wiener_lsd"] = round(wiener_lsd, 6)
+
+        # 2. FFmpeg denoised ODG
+        if ffmpeg_cleaned is not None:
+            ffmpeg_odg, ffmpeg_lsd = _compute_odg(ref, ffmpeg_cleaned, fs_ref)
+            result["ffmpeg_odg"] = round(ffmpeg_odg, 3)
+            result["ffmpeg_lsd"] = round(ffmpeg_lsd, 6)
+
+        # 3. Raw degraded ODG (no noise reduction)
+        raw_odg, raw_lsd = _compute_odg(ref, deg, fs_ref)
+        result["raw_odg"] = round(raw_odg, 3)
+        result["raw_lsd"] = round(raw_lsd, 6)
+
+        # Primary score uses Wiener
+        result["odg_score"] = round(wiener_odg, 3)
+        result["lsd"] = round(wiener_lsd, 6)
+        details["analysis_duration"] = round(min(len(ref), len(subtracted)) / fs_ref, 2)
+
+    else:
+        # No noise provided — just score the degraded audio directly
+        odg, lsd = _compute_odg(ref, deg, fs_ref)
+        result["odg_score"] = round(odg, 3)
+        result["lsd"] = round(lsd, 6)
+        details["analysis_duration"] = round(min(len(ref), len(deg)) / fs_ref, 2)
+
+    result["details"] = details
+    return result
+
+
+def _compute_odg(ref: np.ndarray, deg: np.ndarray, fs: int) -> tuple[float, float]:
+    """Compute ODG score between reference and degraded audio using Log-Spectral Distance."""
     min_len = min(len(ref), len(deg))
     ref = ref[:min_len]
     deg = deg[:min_len]
-    details["analysis_duration"] = round(min_len / fs_ref, 2)
 
-    # Short-time Fourier Transform
     nperseg = 2048
-    _, _, Z_ref = stft(ref, fs_ref, nperseg=nperseg)
-    _, _, Z_deg = stft(deg, fs_ref, nperseg=nperseg)
+    _, _, Z_ref = stft(ref, fs, nperseg=nperseg)
+    _, _, Z_deg = stft(deg, fs, nperseg=nperseg)
 
-    # Magnitude spectra
     mag_ref = np.abs(Z_ref)
     mag_deg = np.abs(Z_deg)
 
-    # Log-Spectral Distance
     eps = 1e-10
-    lsd = np.mean((np.log10(mag_ref + eps) - np.log10(mag_deg + eps)) ** 2)
+    lsd = float(np.mean((np.log10(mag_ref + eps) - np.log10(mag_deg + eps)) ** 2))
 
-    # Map LSD to ODG scale (-4.0 to 0.0)
     odg = -1.5 * np.sqrt(lsd)
     odg = float(np.clip(odg, -4.0, 0.0))
 
-    result.update({
-        "odg_score": round(odg, 3),
-        "lsd": round(float(lsd), 6),
-        "details": details,
-    })
-
-    return result
+    return odg, lsd

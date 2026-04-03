@@ -142,7 +142,10 @@ CREATE TABLE IF NOT EXISTS peaq_results (
     has_noise_reduction     BOOLEAN NOT NULL DEFAULT FALSE,
 
     -- Score
-    odg_score               NUMERIC(8,4),   -- Objective Difference Grade (-4 to 0)
+    -- Scores
+    odg_score               NUMERIC(8,4),   -- Wiener-subtracted ODG (-4 to 0), primary score
+    raw_odg                 NUMERIC(8,4),   -- Raw degraded ODG (no noise reduction)
+    ffmpeg_odg              NUMERIC(8,4),   -- FFmpeg afftdn denoised ODG
     odg_label               TEXT,           -- e.g. "Imperceptible", "Perceptible but not annoying"
 
     -- Noise reduction artifact (base64 audio returned to client)
@@ -155,35 +158,8 @@ CREATE INDEX IF NOT EXISTS idx_peaq_session    ON peaq_results (session_id);
 CREATE INDEX IF NOT EXISTS idx_peaq_created_at ON peaq_results (created_at DESC);
 
 
--- ─── 4. PESQ RESULTS ─────────────────────────────────────────────────────────
+-- ─── 4. PESQ RESULTS (Formerly WebRTC) ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS pesq_results (
-    id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id              UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-    -- Input context
-    degraded_filename       TEXT,
-    test_type               TEXT NOT NULL DEFAULT 'upload',   -- 'upload' | 'comparison' | 'webrtc_simulated'
-
-    -- Scores
-    pesq_wb                 NUMERIC(6,4),   -- Wideband MOS-LQO  (1.0 – 4.5)
-    pesq_nb                 NUMERIC(6,4),   -- Narrowband MOS-LQO (1.0 – 4.5)
-
-    -- Comparison extras (populated only for /pesq/compare)
-    wb_codec                TEXT,
-    nb_codec                TEXT,
-    sample_rate_hz          INT,
-
-    raw_output              JSONB
-);
-
-CREATE INDEX IF NOT EXISTS idx_pesq_session    ON pesq_results (session_id);
-CREATE INDEX IF NOT EXISTS idx_pesq_created_at ON pesq_results (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_pesq_type       ON pesq_results (test_type);
-
-
--- ─── 5. WEBRTC CALL RESULTS ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS webrtc_results (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id              UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -191,11 +167,11 @@ CREATE TABLE IF NOT EXISTS webrtc_results (
     -- 'simulated' = GET /webrtc/call ; 'device' = POST /webrtc/device-call
     call_type               TEXT NOT NULL DEFAULT 'simulated',
 
-    -- Scores (mirrors PESQ columns — WebRTC returns PESQ internally)
-    opus_pesq_wb            NUMERIC(6,4),
-    opus_pesq_nb            NUMERIC(6,4),
-    g711_pesq_wb            NUMERIC(6,4),
-    g711_pesq_nb            NUMERIC(6,4),
+    -- Scores
+    direct_pesq             NUMERIC(6,4),   -- Phone hardware (no codec)
+    pstn_pesq               NUMERIC(6,4),   -- G.711 codec
+    volte_pesq              NUMERIC(6,4),   -- AMR-WB codec
+    voip_pesq               NUMERIC(6,4),   -- Opus codec
 
     -- Device call extras
     recorded_filename       TEXT,
@@ -206,9 +182,9 @@ CREATE TABLE IF NOT EXISTS webrtc_results (
     raw_output              JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_webrtc_session    ON webrtc_results (session_id);
-CREATE INDEX IF NOT EXISTS idx_webrtc_created_at ON webrtc_results (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_webrtc_type       ON webrtc_results (call_type);
+CREATE INDEX IF NOT EXISTS idx_pesq_session    ON pesq_results (session_id);
+CREATE INDEX IF NOT EXISTS idx_pesq_created_at ON pesq_results (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pesq_type       ON pesq_results (call_type);
 
 
 -- ─── 6. IQA RESULTS ──────────────────────────────────────────────────────────

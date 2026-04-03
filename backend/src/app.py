@@ -10,7 +10,6 @@ import asyncio
 
 from src.vmaf.vmaf import compute_vmaf
 from src.peaq.peaq import compute_peaq_odg, PEAQError
-from src.pesq_module.pesq_score import compute_pesq, compute_pesq_comparison, PESQError
 from src.webrtc.codec_call import make_webrtc_call, make_device_webrtc_call
 from src.IMA.IMA import compute_iqa
 from src.db.schemas import DeviceMeta
@@ -194,23 +193,7 @@ async def calculate_pesq(
         tmp_path.unlink(missing_ok=True)
 
 
-@app.get("/pesq/compare")
-async def pesq_comparison(x_session_id: Optional[str] = Header(None)):
-    session_id = _parse_session_id(x_session_id)
 
-    try:
-        result = compute_pesq_comparison()
-        record_id = await db.insert_pesq_result(
-            session_id=session_id,
-            degraded_filename=None,
-            test_type="comparison",
-            result=result,
-        )
-
-        return {**result, "record_id": str(record_id)}
-
-    except PESQError as e:
-        raise HTTPException(500, f"PESQ comparison failed: {e}")
 
 
 # ─── WebRTC Codec Call ────────────────────────────────────────────────────────
@@ -222,7 +205,7 @@ async def webrtc_call(x_session_id: Optional[str] = Header(None)):
         result = make_webrtc_call()
 
         # ── persist ──────────────────────────────────────────────────────────
-        record_id = await db.insert_webrtc_result(
+        record_id = await db.insert_pesq_result_from_webrtc(
             session_id=session_id,
             call_type="simulated",
             result=result,
@@ -256,7 +239,7 @@ async def webrtc_device_call(
         result = make_device_webrtc_call(rec_path)
 
         # ── persist ──────────────────────────────────────────────────────────
-        record_id = await db.insert_webrtc_result(
+        record_id = await db.insert_pesq_result_from_webrtc(
             session_id=session_id,
             call_type="device",
             recorded_filename=filename,

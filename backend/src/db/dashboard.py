@@ -42,8 +42,7 @@ tables = [
     "vmaf_results",
     "peaq_results",
     "pesq_results",
-    "iqa_results",
-    "webrtc_results"
+    "iqa_results"
 ]
 
 selected_table = st.sidebar.selectbox("Select Table", tables)
@@ -55,7 +54,22 @@ limit = st.sidebar.number_input("Limit rows", min_value=10, max_value=10000, val
 
 st.title("Database Viewer")
 
-df = query(f"SELECT * FROM {selected_table} ORDER BY 1 DESC LIMIT {limit}")
+peaq_cols = """id, session_id, created_at,
+    degraded_filename, noise_filename, has_noise_reduction,
+    raw_odg, odg_score AS wiener_odg, ffmpeg_odg,
+    odg_label, subtracted_audio_b64, raw_output"""
+
+webrtc_cols = """id, session_id, created_at,
+    call_type, recorded_filename,
+    direct_pesq, pstn_pesq, volte_pesq, voip_pesq,
+    degraded_audio_b64, raw_output"""
+
+if selected_table == "peaq_results":
+    df = query(f"SELECT {peaq_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}")
+elif selected_table == "pesq_results":
+    df = query(f"SELECT {webrtc_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}")
+else:
+    df = query(f"SELECT * FROM {selected_table} ORDER BY 1 DESC LIMIT {limit}")
 
 if df.empty:
     st.warning("No data found.")
