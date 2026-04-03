@@ -7,7 +7,7 @@ _pool: Optional[asyncpg.Pool] = None
 
 async def get_pool() -> asyncpg.Pool:
     """Returns the connection pool. Must be initialised via init_pool() first."""
-    if _pool is Noner:
+    if _pool is None:
         raise RuntimeError(
             "Database pool has not been initialised. "
             "Ensure init_pool() is called in the FastAPI lifespan handler."
