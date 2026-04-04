@@ -46,8 +46,7 @@ class VmafTestPage extends StatefulWidget {
 // done    → popped
 enum _VmafState { idle, recording, done }
 
-class _VmafTestPageState extends State<VmafTestPage>
-    with TickerProviderStateMixin {
+class _VmafTestPageState extends State<VmafTestPage> {
 
   late VideoPlayerController _player;
   bool _playerReady  = false;
@@ -58,7 +57,6 @@ class _VmafTestPageState extends State<VmafTestPage>
   String     _statusMsg = 'Getting ready…';
   String?    _errorMsg;
 
-  late AnimationController _pulseCtrl;
 
   static const _recordingWarmup   = Duration(milliseconds: 2500);
   static const _orientationSettle = Duration(milliseconds: 1200);
@@ -70,15 +68,11 @@ class _VmafTestPageState extends State<VmafTestPage>
   @override
   void initState() {
     super.initState();
-    _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
-      ..repeat(reverse: true);
     _initPlayer();
   }
 
   @override
   void dispose() {
-    _pulseCtrl.dispose();
     _player.dispose();
     _restoreOrientation();
     super.dispose();
@@ -391,49 +385,7 @@ class _VmafTestPageState extends State<VmafTestPage>
                       style: TextStyle(
                           color: AppTheme.textSec, fontSize: 13)),
                   const SizedBox(height: 36),
-
-                  // ── Pulse / record ring ────────────────────────────────
-                  AnimatedBuilder(
-                    animation: _pulseCtrl,
-                    builder: (_, __) => Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppTheme.surface,
-                        border: Border.all(
-                          color: _state == _VmafState.recording
-                              ? AppTheme.bad.withOpacity(
-                              0.4 + 0.6 * _pulseCtrl.value)
-                              : AppTheme.vmafColor.withOpacity(0.25),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (_state == _VmafState.recording
-                                ? AppTheme.bad
-                                : AppTheme.vmafColor)
-                                .withOpacity(_state == _VmafState.recording
-                                ? 0.10 + 0.15 * _pulseCtrl.value
-                                : 0.05),
-                            blurRadius: 32,
-                            spreadRadius: 4,
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        _state == _VmafState.recording
-                            ? Icons.fiber_manual_record
-                            : Icons.hourglass_top_rounded,
-                        color: _state == _VmafState.recording
-                            ? AppTheme.bad
-                            : AppTheme.vmafColor,
-                        size: 40,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 48),
 
                   // ── Status / error ─────────────────────────────────────
                   AnimatedSwitcher(
