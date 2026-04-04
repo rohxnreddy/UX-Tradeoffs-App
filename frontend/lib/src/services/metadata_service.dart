@@ -121,10 +121,15 @@ class MetadataService {
       'user_photo_url':   store.googlePhotoUrl,
 
       // ── Questionnaire answers (flat DB column names) ──────────────────────
-      'device_usage':    store.deviceUsage    ?? questionnaireAnswers?['device_usage']    ?? '',
-      'network_env':     store.networkEnv     ?? questionnaireAnswers?['network_env']     ?? '',
-      'testing_purpose': store.testingPurpose ?? questionnaireAnswers?['testing_purpose'] ?? '',
-      'usage_frequency': store.usageFrequency ?? questionnaireAnswers?['usage_frequency'] ?? '',
+      'age_group':                  store.ageGroup               ?? questionnaireAnswers?['age_group']                  ?? '',
+      'phone_condition':            store.phoneCondition         ?? questionnaireAnswers?['phone_condition']            ?? '',
+      'phone_duration':             store.phoneDuration          ?? questionnaireAnswers?['phone_duration']             ?? '',
+      'phone_history':              store.phoneHistory           ?? questionnaireAnswers?['phone_history']              ?? '',
+      'primary_usage':              store.primaryUsage           ?? questionnaireAnswers?['primary_usage']              ?? '',
+      'internet_frequency':         store.internetFrequency      ?? questionnaireAnswers?['internet_frequency']         ?? '',
+      'phone_sharing':              store.phoneSharing           ?? questionnaireAnswers?['phone_sharing']              ?? '',
+      'internet_connection_type':   store.internetConnectionType ?? questionnaireAnswers?['internet_connection_type']   ?? '',
+      'phone_acquisition':          store.phoneAcquisition       ?? questionnaireAnswers?['phone_acquisition']          ?? '',
 
       // ── Device hardware ───────────────────────────────────────────────────
       'device_model':        device['model'],

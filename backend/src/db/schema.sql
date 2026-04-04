@@ -19,10 +19,15 @@ CREATE TABLE IF NOT EXISTS users (
     user_photo_url          TEXT,
 
     -- Questionnaire Answers
-    device_usage            TEXT,       -- e.g. "Media & streaming"
-    network_env             TEXT,       -- e.g. "Strong Wi-Fi (home/office)"
-    testing_purpose         TEXT,       -- e.g. "Personal research"
-    usage_frequency         TEXT        -- e.g. "Weekly"
+    age_group               TEXT,
+    phone_condition         TEXT,
+    phone_duration          TEXT,
+    phone_history           TEXT,
+    primary_usage           TEXT,
+    internet_frequency      TEXT,
+    phone_sharing           TEXT,
+    internet_connection_type TEXT,
+    phone_acquisition       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_user_email ON users (user_email);

@@ -55,24 +55,36 @@ async def upsert_user(meta: dict) -> UUID:
         """
         INSERT INTO users (
             username, user_email, user_photo_url,
-            device_usage, network_env, testing_purpose, usage_frequency
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            age_group, phone_condition, phone_duration, phone_history,
+            primary_usage, internet_frequency, phone_sharing,
+            internet_connection_type, phone_acquisition
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (user_email) DO UPDATE SET
             username = EXCLUDED.username,
             user_photo_url = EXCLUDED.user_photo_url,
-            device_usage = COALESCE(EXCLUDED.device_usage, users.device_usage),
-            network_env = COALESCE(EXCLUDED.network_env, users.network_env),
-            testing_purpose = COALESCE(EXCLUDED.testing_purpose, users.testing_purpose),
-            usage_frequency = COALESCE(EXCLUDED.usage_frequency, users.usage_frequency)
+            age_group = COALESCE(EXCLUDED.age_group, users.age_group),
+            phone_condition = COALESCE(EXCLUDED.phone_condition, users.phone_condition),
+            phone_duration = COALESCE(EXCLUDED.phone_duration, users.phone_duration),
+            phone_history = COALESCE(EXCLUDED.phone_history, users.phone_history),
+            primary_usage = COALESCE(EXCLUDED.primary_usage, users.primary_usage),
+            internet_frequency = COALESCE(EXCLUDED.internet_frequency, users.internet_frequency),
+            phone_sharing = COALESCE(EXCLUDED.phone_sharing, users.phone_sharing),
+            internet_connection_type = COALESCE(EXCLUDED.internet_connection_type, users.internet_connection_type),
+            phone_acquisition = COALESCE(EXCLUDED.phone_acquisition, users.phone_acquisition)
         RETURNING id
         """,
         meta.get("username"),
         meta.get("user_email"),
         meta.get("user_photo_url"),
-        meta.get("device_usage"),
-        meta.get("network_env"),
-        meta.get("testing_purpose"),
-        meta.get("usage_frequency"),
+        meta.get("age_group"),
+        meta.get("phone_condition"),
+        meta.get("phone_duration"),
+        meta.get("phone_history"),
+        meta.get("primary_usage"),
+        meta.get("internet_frequency"),
+        meta.get("phone_sharing"),
+        meta.get("internet_connection_type"),
+        meta.get("phone_acquisition"),
     )
     return row["id"]
 

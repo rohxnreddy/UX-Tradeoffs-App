@@ -18,11 +18,8 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
   int _page = 0;
   bool _submitting = false;
 
-  // Answers — stored using the exact DB column names as keys
-  String? _usage;      // → device_usage
-  String? _network;    // → network_env
-  String? _purpose;    // → testing_purpose
-  String? _frequency;  // → usage_frequency
+  // Answers array for the 9 questions
+  final List<dynamic> _answers = List.filled(9, null);
   bool _locationPrompted = false;
 
   @override
@@ -46,64 +43,122 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
 
   static const _questions = [
     _Question(
-      key: 'device_usage',
-      text: 'How do you primarily use your phone?',
+      key: 'age_group',
+      text: 'Age group (choose one)',
       options: [
-        _Option('Media & streaming',      Icons.play_circle_outline),
-        _Option('Calls & communication',  Icons.call_outlined),
-        _Option('Work & productivity',    Icons.work_outline),
-        _Option('Gaming & entertainment', Icons.games_outlined),
+        _Option('Under 18', Icons.person_outline),
+        _Option('18–24', Icons.person_outline),
+        _Option('25–34', Icons.person_outline),
+        _Option('35–44', Icons.person_outline),
+        _Option('45–54', Icons.person_outline),
+        _Option('55+', Icons.person_outline),
+        _Option('Prefer not to say', Icons.privacy_tip_outlined),
       ],
     ),
     _Question(
-      key: 'network_env',
-      text: 'What\'s your typical network environment?',
+      key: 'phone_condition',
+      text: 'Is this phone:',
       options: [
-        _Option('Strong Wi-Fi (home/office)', Icons.wifi),
-        _Option('Moderate Wi-Fi',             Icons.wifi_2_bar),
-        _Option('4G / LTE cellular',          Icons.signal_cellular_alt),
-        _Option('Varies / mixed',             Icons.shuffle),
+        _Option('New (purchased first-hand)', Icons.phone_android),
+        _Option('Used (purchased second-hand)', Icons.handshake_outlined),
+        _Option('Hand-me-down (from family/friends)', Icons.family_restroom),
       ],
     ),
     _Question(
-      key: 'testing_purpose',
-      text: 'What\'s the main purpose of this test?',
+      key: 'phone_duration',
+      text: 'How long have you been using this phone?',
       options: [
-        _Option('Personal research',    Icons.person_outline),
-        _Option('Academic study',       Icons.school_outlined),
-        _Option('Product benchmarking', Icons.analytics_outlined),
-        _Option('QA / field testing',   Icons.checklist_outlined),
+        _Option('Less than 6 months', Icons.schedule),
+        _Option('6–12 months', Icons.schedule),
+        _Option('1–2 years', Icons.schedule),
+        _Option('2–3 years', Icons.schedule),
+        _Option('More than 3 years', Icons.schedule),
       ],
     ),
     _Question(
-      key: 'usage_frequency',
-      text: 'How often do you run quality tests?',
+      key: 'phone_history',
+      text: 'Have you used other phones before this?',
       options: [
-        _Option('First time',    Icons.new_releases_outlined),
-        _Option('Occasionally',  Icons.hourglass_empty),
-        _Option('Weekly',        Icons.calendar_today_outlined),
-        _Option('Daily / often', Icons.repeat),
+        _Option('Yes, mostly new phones', Icons.phone_android),
+        _Option('Yes, mostly used/second-hand phones', Icons.handshake_outlined),
+        _Option('Yes, a mix', Icons.shuffle),
+        _Option('No, this is my first phone', Icons.looks_one_outlined),
+      ],
+    ),
+    _Question(
+      key: 'primary_usage',
+      text: 'What do you mainly use your phone for? (multi-select)',
+      isMultiSelect: true,
+      options: [
+        _Option('Calls and messaging', Icons.call_outlined),
+        _Option('Social media', Icons.group_outlined),
+        _Option('Entertainment (videos/music/games)', Icons.play_circle_outline),
+        _Option('Work or business', Icons.work_outline),
+        _Option('Education/learning', Icons.school_outlined),
+        _Option('Accessing government services', Icons.account_balance_outlined),
+        _Option('Payments/financial apps', Icons.payment_outlined),
+      ],
+    ),
+    _Question(
+      key: 'internet_frequency',
+      text: 'How often do you use the internet on your phone?',
+      options: [
+        _Option('Rarely', Icons.hourglass_empty),
+        _Option('A few times a week', Icons.calendar_view_week),
+        _Option('Daily', Icons.calendar_today),
+        _Option('Almost all the time', Icons.all_inclusive),
+      ],
+    ),
+    _Question(
+      key: 'phone_sharing',
+      text: 'Is this phone used by:',
+      options: [
+        _Option('Only me', Icons.person_outline),
+        _Option('Shared with family members', Icons.family_restroom),
+        _Option('Shared with non-family members', Icons.group_outlined),
+      ],
+    ),
+    _Question(
+      key: 'internet_connection_type',
+      text: 'What type of internet connection do you mostly use?',
+      options: [
+        _Option('Mobile data', Icons.cell_tower),
+        _Option('Wi-Fi', Icons.wifi),
+        _Option('Both equally', Icons.import_export),
+        _Option('Rarely use internet', Icons.signal_cellular_off),
+      ],
+    ),
+    _Question(
+      key: 'phone_acquisition',
+      text: 'How was this phone acquired?',
+      options: [
+        _Option('Bought by me', Icons.shopping_cart_outlined),
+        _Option('Bought by family', Icons.family_restroom),
+        _Option('Provided by employer', Icons.work_outline),
+        _Option('Received as a gift', Icons.card_giftcard_outlined),
       ],
     ),
   ];
 
-  String? _answerFor(int index) {
-    switch (index) {
-      case 0: return _usage;
-      case 1: return _network;
-      case 2: return _purpose;
-      case 3: return _frequency;
-      default: return null;
+  dynamic _answerFor(int index) {
+    if (_questions[index].isMultiSelect) {
+      return _answers[index] ?? <String>{};
     }
+    return _answers[index];
   }
 
-  void _setAnswer(int index, String value) {
+  void _setAnswer(int index, String value, {bool isMultiSelect = false}) {
     setState(() {
-      switch (index) {
-        case 0: _usage     = value; break;
-        case 1: _network   = value; break;
-        case 2: _purpose   = value; break;
-        case 3: _frequency = value; break;
+      if (isMultiSelect) {
+        Set<String> current = _answers[index] == null ? <String>{} : Set<String>.from(_answers[index]);
+        if (current.contains(value)) {
+          current.remove(value);
+        } else {
+          current.add(value);
+        }
+        _answers[index] = current.isEmpty ? null : current;
+      } else {
+        _answers[index] = value;
       }
     });
   }
@@ -125,26 +180,34 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
 
     final store = SessionStore.instance;
 
-    // Persist answers in SessionStore (keys match DB column names)
-    store.setAnswers(
-      usage:     _usage     ?? '',
-      network:   _network   ?? '',
-      purpose:   _purpose   ?? '',
-      frequency: _frequency ?? '',
+    // Persist answers in SessionStore
+    await store.setAnswers(
+      pAgeGroup:               _answers[0] as String? ?? '',
+      pPhoneCondition:         _answers[1] as String? ?? '',
+      pPhoneDuration:          _answers[2] as String? ?? '',
+      pPhoneHistory:           _answers[3] as String? ?? '',
+      pPrimaryUsage:           ((_answers[4] as Set<String>?) ?? {}).join(', '),
+      pInternetFrequency:      _answers[5] as String? ?? '',
+      pPhoneSharing:           _answers[6] as String? ?? '',
+      pInternetConnectionType: _answers[7] as String? ?? '',
+      pPhoneAcquisition:       _answers[8] as String? ?? '',
     );
 
     // Fire metadata collection — sends login + questionnaire + device info
     // to POST /device/metadata and stores the returned session_id.
-    // This runs in the background; onDone() is called immediately so the
-    // user is not blocked waiting for the network round-trip.
     MetadataService.instance.collectAndSend(
       testerName: store.googleDisplayName,           // display name from Google Sign-In
       includeLocation: true,                         // Include GPS/Network location
       questionnaireAnswers: {
-        'device_usage':    store.deviceUsage    ?? '',
-        'network_env':     store.networkEnv     ?? '',
-        'testing_purpose': store.testingPurpose ?? '',
-        'usage_frequency': store.usageFrequency ?? '',
+        'age_group':                  store.ageGroup               ?? '',
+        'phone_condition':            store.phoneCondition         ?? '',
+        'phone_duration':             store.phoneDuration          ?? '',
+        'phone_history':              store.phoneHistory           ?? '',
+        'primary_usage':              store.primaryUsage           ?? '',
+        'internet_frequency':         store.internetFrequency      ?? '',
+        'phone_sharing':              store.phoneSharing           ?? '',
+        'internet_connection_type':   store.internetConnectionType ?? '',
+        'phone_acquisition':          store.phoneAcquisition       ?? '',
       },
     );
 
@@ -160,7 +223,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
   @override
   Widget build(BuildContext context) {
     final q      = _questions[_page];
-    final answer = _answerFor(_page);
+    final answer = _answers[_page]; // To check disabled state of Next button
     final isLast = _page == _questions.length - 1;
 
     return Scaffold(
@@ -216,17 +279,22 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                 children: List.generate(_questions.length, (i) {
                   final qi = _questions[i];
                   final ai = _answerFor(i);
-                  return Padding(
+                  return SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Column(
-                      children: qi.options.map((opt) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _OptionTile(
-                          option:   opt,
-                          selected: ai == opt.label,
-                          onTap:    () => _setAnswer(i, opt.label),
-                        ),
-                      )).toList(),
+                      children: qi.options.map((opt) {
+                        final isSelected = qi.isMultiSelect 
+                           ? (ai as Set<String>).contains(opt.label)
+                           : ai == opt.label;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _OptionTile(
+                            option:   opt,
+                            selected: isSelected,
+                            onTap:    () => _setAnswer(i, opt.label, isMultiSelect: qi.isMultiSelect),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   );
                 }),
@@ -379,7 +447,8 @@ class _Question {
   final String        key;
   final String        text;
   final List<_Option> options;
-  const _Question({required this.key, required this.text, required this.options});
+  final bool          isMultiSelect;
+  const _Question({required this.key, required this.text, required this.options, this.isMultiSelect = false});
 }
 
 class _Option {

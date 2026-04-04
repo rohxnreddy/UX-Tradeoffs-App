@@ -75,10 +75,15 @@ async def receive_metadata(meta: DeviceMeta):
             "photo_url": meta.user_photo_url,
         },
         "questionnaire": {
-            "device_usage":    meta.device_usage,
-            "network_env":     meta.network_env,
-            "testing_purpose": meta.testing_purpose,
-            "usage_frequency": meta.usage_frequency,
+            "age_group": meta.age_group,
+            "phone_condition": meta.phone_condition,
+            "phone_duration": meta.phone_duration,
+            "phone_history": meta.phone_history,
+            "primary_usage": meta.primary_usage,
+            "internet_frequency": meta.internet_frequency,
+            "phone_sharing": meta.phone_sharing,
+            "internet_connection_type": meta.internet_connection_type,
+            "phone_acquisition": meta.phone_acquisition,
         },
     }
 
@@ -96,7 +101,9 @@ async def get_session(session_id: UUID):
         SELECT
             s.id, s.created_at,
             u.username, u.user_email, u.user_photo_url,
-            u.device_usage, u.network_env, u.testing_purpose, u.usage_frequency,
+            u.age_group, u.phone_condition, u.phone_duration,
+            u.phone_history, u.primary_usage, u.internet_frequency,
+            u.phone_sharing, u.internet_connection_type, u.phone_acquisition,
             s.device_model, s.device_brand, s.android_version,
             s.app_version_name, s.connection_type, s.country
         FROM sessions s
