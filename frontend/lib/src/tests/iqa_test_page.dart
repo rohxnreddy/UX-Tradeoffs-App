@@ -495,7 +495,7 @@ class _IqaTestPageState extends State<IqaTestPage>
                               Text(
                                 _isAnalysing
                                     ? 'Checking…'
-                                    : 'Continue',
+                                    : 'Check My Photos',
                                 style: const TextStyle(
                                   color: Colors.black,
                                   fontWeight: FontWeight.w800,
