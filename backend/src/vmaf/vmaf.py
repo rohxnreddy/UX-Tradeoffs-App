@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from datetime import datetime
+import multiprocessing
 
 class VMAFError(Exception):
     pass
@@ -205,6 +206,7 @@ def compute_vmaf(
         dist_chain += f",{crop_filter}"
     dist_chain += f",scale={ref_width}:{ref_height},fps={ref_fps}[dist];"
 
+    cores = multiprocessing.cpu_count()
     vmaf_filter = (
         f"[0:v]trim=start={ref_start}:duration={seek_duration},"
         f"setpts=PTS-STARTPTS,"
@@ -215,7 +217,9 @@ def compute_vmaf(
 
         f"[ref][dist]libvmaf="
         f"log_fmt=json:"
-        f"log_path={output_json}"
+        f"log_path={output_json}:"
+        f"n_threads={cores}:"
+        f"n_subsample=5"
     )
 
     cmd = [

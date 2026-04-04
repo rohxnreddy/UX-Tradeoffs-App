@@ -156,7 +156,7 @@ async def calculate_vmaf(
         original_path = Path(tmp.name)
 
     try:
-        score = compute_vmaf(original_path)
+        score = await run_in_threadpool(compute_vmaf, original_path)
         result = {"vmaf_score": score}
         record_id = await db.insert_vmaf_result(
             session_id=session_id,
