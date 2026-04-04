@@ -1,17 +1,40 @@
 -- ============================================================
 --  Quality Testing Platform — PostgreSQL Schema
---  Tables: device_sessions  →  [vmaf|peaq|pesq|iqa|webrtc]_results
+--  Tables: users -> sessions  →  [vmaf|peaq|pesq|iqa]_results
 -- ============================================================
 
 -- Enable UUID generation
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- ─── 1. DEVICE SESSIONS ──────────────────────────────────────────────────────
+-- ─── 1. USERS ───────────────────────────────────────────────────────────────
+--  One row per user (identified by email).
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS users (
+    id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at              TIMESTAMPTZ NOT NULL    DEFAULT now(),
+
+    -- Identity
+    username                TEXT,
+    user_email              TEXT        UNIQUE,
+    user_photo_url          TEXT,
+
+    -- Questionnaire Answers
+    device_usage            TEXT,       -- e.g. "Media & streaming"
+    network_env             TEXT,       -- e.g. "Strong Wi-Fi (home/office)"
+    testing_purpose         TEXT,       -- e.g. "Personal research"
+    usage_frequency         TEXT        -- e.g. "Weekly"
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_user_email ON users (user_email);
+
+
+-- ─── 2. SESSIONS ─────────────────────────────────────────────────────────────
 --  One row per POST /device/metadata call.
 --  All subsequent test results FK into this table.
 -- ─────────────────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS device_sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                 UUID        REFERENCES users (id) ON DELETE CASCADE,
     created_at              TIMESTAMPTZ NOT NULL    DEFAULT now(),
 
     -- Hardware
@@ -104,15 +127,16 @@ CREATE TABLE IF NOT EXISTS device_sessions (
     audio_output_route      TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_device_sessions_created_at   ON device_sessions (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_device_model ON device_sessions (device_model);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_app_version  ON device_sessions (app_version_name);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_created_at    ON sessions (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_device_model  ON sessions (device_model);
+CREATE INDEX IF NOT EXISTS idx_sessions_app_version   ON sessions (app_version_name);
 
 
--- ─── 2. VMAF RESULTS ─────────────────────────────────────────────────────────
+-- ─── 3. VMAF RESULTS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS vmaf_results (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id          UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
+    session_id          UUID        REFERENCES sessions (id) ON DELETE SET NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- Input context
@@ -130,10 +154,10 @@ CREATE INDEX IF NOT EXISTS idx_vmaf_session    ON vmaf_results (session_id);
 CREATE INDEX IF NOT EXISTS idx_vmaf_created_at ON vmaf_results (created_at DESC);
 
 
--- ─── 3. PEAQ RESULTS ─────────────────────────────────────────────────────────
+-- ─── 4. PEAQ RESULTS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS peaq_results (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id              UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
+    session_id              UUID        REFERENCES sessions (id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- Input context
@@ -141,8 +165,10 @@ CREATE TABLE IF NOT EXISTS peaq_results (
     noise_filename          TEXT,           -- NULL when no noise file supplied
     has_noise_reduction     BOOLEAN NOT NULL DEFAULT FALSE,
 
-    -- Score
-    odg_score               NUMERIC(8,4),   -- Objective Difference Grade (-4 to 0)
+    -- Scores
+    odg_score               NUMERIC(8,4),   -- Wiener-subtracted ODG (-4 to 0), primary score
+    raw_odg                 NUMERIC(8,4),   -- Raw degraded ODG (no noise reduction)
+    ffmpeg_odg              NUMERIC(8,4),   -- FFmpeg afftdn denoised ODG
     odg_label               TEXT,           -- e.g. "Imperceptible", "Perceptible but not annoying"
 
     -- Noise reduction artifact (base64 audio returned to client)
@@ -155,47 +181,20 @@ CREATE INDEX IF NOT EXISTS idx_peaq_session    ON peaq_results (session_id);
 CREATE INDEX IF NOT EXISTS idx_peaq_created_at ON peaq_results (created_at DESC);
 
 
--- ─── 4. PESQ RESULTS ─────────────────────────────────────────────────────────
+-- ─── 5. PESQ RESULTS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS pesq_results (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id              UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
+    session_id              UUID        REFERENCES sessions (id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    -- Input context
-    degraded_filename       TEXT,
-    test_type               TEXT NOT NULL DEFAULT 'upload',   -- 'upload' | 'comparison' | 'webrtc_simulated'
-
-    -- Scores
-    pesq_wb                 NUMERIC(6,4),   -- Wideband MOS-LQO  (1.0 – 4.5)
-    pesq_nb                 NUMERIC(6,4),   -- Narrowband MOS-LQO (1.0 – 4.5)
-
-    -- Comparison extras (populated only for /pesq/compare)
-    wb_codec                TEXT,
-    nb_codec                TEXT,
-    sample_rate_hz          INT,
-
-    raw_output              JSONB
-);
-
-CREATE INDEX IF NOT EXISTS idx_pesq_session    ON pesq_results (session_id);
-CREATE INDEX IF NOT EXISTS idx_pesq_created_at ON pesq_results (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_pesq_type       ON pesq_results (test_type);
-
-
--- ─── 5. WEBRTC CALL RESULTS ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS webrtc_results (
-    id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id              UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-    -- 'simulated' = GET /webrtc/call ; 'device' = POST /webrtc/device-call
+    -- 'simulated' = GET /webrtc/call ; 'device' = POST /webrtc/device-call ; 'upload' = POST /pesq/score
     call_type               TEXT NOT NULL DEFAULT 'simulated',
 
-    -- Scores (mirrors PESQ columns — WebRTC returns PESQ internally)
-    opus_pesq_wb            NUMERIC(6,4),
-    opus_pesq_nb            NUMERIC(6,4),
-    g711_pesq_wb            NUMERIC(6,4),
-    g711_pesq_nb            NUMERIC(6,4),
+    -- Scores
+    direct_pesq             NUMERIC(6,4),   -- Phone hardware (no codec)
+    pstn_pesq               NUMERIC(6,4),   -- G.711 codec
+    volte_pesq              NUMERIC(6,4),   -- AMR-WB codec
+    voip_pesq               NUMERIC(6,4),   -- Opus codec
 
     -- Device call extras
     recorded_filename       TEXT,
@@ -206,17 +205,17 @@ CREATE TABLE IF NOT EXISTS webrtc_results (
     raw_output              JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_webrtc_session    ON webrtc_results (session_id);
-CREATE INDEX IF NOT EXISTS idx_webrtc_created_at ON webrtc_results (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_webrtc_type       ON webrtc_results (call_type);
+CREATE INDEX IF NOT EXISTS idx_pesq_session    ON pesq_results (session_id);
+CREATE INDEX IF NOT EXISTS idx_pesq_created_at ON pesq_results (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pesq_type       ON pesq_results (call_type);
 
 
 -- ─── 6. IQA RESULTS ──────────────────────────────────────────────────────────
---  One parent row per POST /iqa/score call (can hold many images).
+--  One row per image within a POST /iqa/score batch call.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS iqa_results (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id          UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
+    session_id          UUID        REFERENCES sessions (id) ON DELETE SET NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- One row per image within the batch

@@ -4,6 +4,8 @@ import 'package:frontend/vmaf/vmaf_home.dart';
 import 'package:frontend/peaq/peaq_test.dart';
 import 'package:frontend/pesq/pesq_test.dart';
 import 'package:frontend/IQA/IQA.dart';
+import 'package:frontend/battery/battery_load_page.dart';
+import 'package:frontend/home/metric_runner_home.dart';
 import 'package:frontend/metadata/meta_page.dart';
 import 'package:frontend/metadata/metadata.dart';
 
@@ -59,31 +61,43 @@ class _HomeNavState extends State<HomeNav> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          // ── 0 · Meta ─────────────────────────────────────────────
+          // ── 0 · Home Runner ──────────────────────────────────────
+          _buildPageScaffold(
+            title: 'Run Metric Tests',
+            icon: Icons.play_circle_outline,
+            body: const MetricRunnerHome(),
+          ),
+          // ── 1 · Meta ─────────────────────────────────────────────
           _buildPageScaffold(
             title: 'Device Meta',
             icon: Icons.phone_android_outlined,
             body: const MetaPage(),
           ),
-          // ── 1 · VMAF ─────────────────────────────────────────────
+          // ── 2 · VMAF ─────────────────────────────────────────────
           VmafHome(onMenuPressed: () => _scaffoldKey.currentState?.openDrawer()),
-          // ── 2 · PEAQ ─────────────────────────────────────────────
+          // ── 3 · PEAQ ─────────────────────────────────────────────
           _buildPageScaffold(
             title: 'PEAQ — Audio Quality',
             icon: Icons.music_note_outlined,
             body: const PeaqTestScreen(),
           ),
-          // ── 3 · PESQ ─────────────────────────────────────────────
+          // ── 4 · PESQ ─────────────────────────────────────────────
           _buildPageScaffold(
             title: 'PESQ — Speech Quality',
             icon: Icons.record_voice_over_outlined,
             body: const PesqTestScreen(),
           ),
-          // ── 4 · IQA ──────────────────────────────────────────────
+          // ── 5 · IQA ──────────────────────────────────────────────
           _buildPageScaffold(
             title: 'IQA — Image Quality',
             icon: Icons.image_outlined,
             body: const IQAPage(),
+          ),
+          // ── 6 · Battery Load ─────────────────────────────────────
+          _buildPageScaffold(
+            title: 'Battery Load Tester',
+            icon: Icons.battery_charging_full_outlined,
+            body: const BatteryLoadPage(),
           ),
         ],
       ),
@@ -144,34 +158,46 @@ class _HomeNavState extends State<HomeNav> {
             ),
           ),
           _buildDrawerItem(
+            icon: Icons.play_circle_outline,
+            title: 'Run Metric Tests',
+            subtitle: 'Automated Sequential Runner',
+            index: 0,
+          ),
+          _buildDrawerItem(
             icon: Icons.phone_android_outlined,
             title: 'Device Meta',
             subtitle: 'Device & User Metadata',
-            index: 0,
+            index: 1,
           ),
           _buildDrawerItem(
             icon: Icons.videocam_outlined,
             title: 'VMAF',
             subtitle: 'Video Quality Assessment',
-            index: 1,
+            index: 2,
           ),
           _buildDrawerItem(
             icon: Icons.music_note_outlined,
             title: 'PEAQ',
             subtitle: 'Audio Quality Assessment',
-            index: 2,
+            index: 3,
           ),
           _buildDrawerItem(
             icon: Icons.record_voice_over_outlined,
             title: 'PESQ',
             subtitle: 'Speech Quality Assessment',
-            index: 3,
+            index: 4,
           ),
           _buildDrawerItem(
             icon: Icons.image_outlined,
             title: 'IQA',
             subtitle: 'Image Quality Assessment',
-            index: 4,
+            index: 5,
+          ),
+          _buildDrawerItem(
+            icon: Icons.battery_charging_full_outlined,
+            title: 'Battery Load',
+            subtitle: 'Battery Stress Testing',
+            index: 6,
           ),
         ],
       ),

@@ -1,8 +1,20 @@
 from pydantic import BaseModel
 from typing import Optional
 
+
 class DeviceMeta(BaseModel):
-    # Device Hardware
+    # ── Tester Identity (from Google Sign-In) ─────────────────────────────────
+    username: Optional[str] = None
+    user_email: Optional[str] = None
+    user_photo_url: Optional[str] = None
+
+    # ── Questionnaire Answers ─────────────────────────────────────────────────
+    device_usage: Optional[str] = None       # "Media & streaming", "Calls & communication", …
+    network_env: Optional[str] = None        # "Strong Wi-Fi", "4G / LTE cellular", …
+    testing_purpose: Optional[str] = None    # "Personal research", "Academic study", …
+    usage_frequency: Optional[str] = None    # "First time", "Weekly", "Daily / often", …
+
+    # ── Device Hardware ───────────────────────────────────────────────────────
     device_model: Optional[str] = None
     device_brand: Optional[str] = None
     device_manufacturer: Optional[str] = None
@@ -10,7 +22,8 @@ class DeviceMeta(BaseModel):
     device_hardware: Optional[str] = None
     supported_abis: Optional[str] = None
     cpu_cores: Optional[int] = None
-    # OS & System
+
+    # ── OS & System ───────────────────────────────────────────────────────────
     android_version: Optional[str] = None
     sdk_version: Optional[int] = None
     build_number: Optional[str] = None
@@ -19,26 +32,31 @@ class DeviceMeta(BaseModel):
     bootloader: Optional[str] = None
     is_physical_device: Optional[bool] = None
     is_rooted: Optional[bool] = None
-    # App Info
+
+    # ── App Info ──────────────────────────────────────────────────────────────
     app_package_name: Optional[str] = None
     app_version_name: Optional[str] = None
     app_version_code: Optional[int] = None
     app_installer_package: Optional[str] = None
     is_debug_build: Optional[bool] = None
-    # Screen
+
+    # ── Screen ────────────────────────────────────────────────────────────────
     screen_width_px: Optional[float] = None
     screen_height_px: Optional[float] = None
     screen_density: Optional[float] = None
     display_refresh_rate: Optional[float] = None
-    # Locale
+
+    # ── Locale ────────────────────────────────────────────────────────────────
     device_language: Optional[str] = None
     device_locale: Optional[str] = None
     timezone: Optional[str] = None
     country_code: Optional[str] = None
-    # Battery
+
+    # ── Battery ───────────────────────────────────────────────────────────────
     battery_level: Optional[int] = None
     battery_state: Optional[str] = None
-    # Network
+
+    # ── Network ───────────────────────────────────────────────────────────────
     connection_type: Optional[str] = None
     wifi_name: Optional[str] = None
     wifi_bssid: Optional[str] = None
@@ -47,7 +65,8 @@ class DeviceMeta(BaseModel):
     is_vpn_active: Optional[bool] = None
     network_speed_category: Optional[str] = None
     network_latency_ms: Optional[int] = None
-    # Location
+
+    # ── Location ──────────────────────────────────────────────────────────────
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     altitude: Optional[float] = None
@@ -59,22 +78,27 @@ class DeviceMeta(BaseModel):
     postal_code: Optional[str] = None
     admin_area: Optional[str] = None
     iso_country_code: Optional[str] = None
-    # Permissions
+
+    # ── Permissions ───────────────────────────────────────────────────────────
     permission_statuses: Optional[dict] = None
-    # Session
+
+    # ── Session Activity ──────────────────────────────────────────────────────
     session_start: Optional[str] = None
     session_screen_views: Optional[int] = None
     session_user_actions: Optional[int] = None
     session_background_count: Optional[int] = None
-    # Performance
+
+    # ── Performance ───────────────────────────────────────────────────────────
     app_launch_time_ms: Optional[int] = None
     frame_drop_count: Optional[int] = None
     last_crash_info: Optional[str] = None
-    # Memory & Storage
+
+    # ── Memory & Storage ──────────────────────────────────────────────────────
     device_tier: Optional[str] = None
     total_ram_mb: Optional[int] = None
     available_ram_mb: Optional[int] = None
     total_disk_mb: Optional[int] = None
     free_disk_mb: Optional[int] = None
-    # Audio
+
+    # ── Audio ─────────────────────────────────────────────────────────────────
     audio_output_route: Optional[str] = None
