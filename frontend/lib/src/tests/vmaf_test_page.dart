@@ -19,6 +19,7 @@ import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 
 import '../core/app_config.dart';
+import '../core/session_store.dart';
 import '../core/theme.dart';
 import '../runner/test_model.dart';
 
@@ -264,10 +265,33 @@ class _VmafTestPageState extends State<VmafTestPage>
 
   // ── Background upload ─────────────────────────────────────────────────────
 
+  double _parseVmafScore(Map<String, dynamic> data) {
+    dynamic raw = data['vmaf_score'];
+    if (raw == null && data['result'] is Map<String, dynamic>) {
+      raw = (data['result'] as Map<String, dynamic>)['vmaf_score'];
+    }
+
+    if (raw is num) return raw.toDouble();
+    if (raw is String) {
+      final parsed = double.tryParse(raw);
+      if (parsed != null) return parsed;
+    }
+
+    throw Exception(
+      "Unexpected 'vmaf_score' value (${raw.runtimeType}): $raw",
+    );
+  }
+
   Future<void> _uploadInBackground(String path) async {
     try {
       final request =
       http.MultipartRequest('POST', Uri.parse('$_apiBase/vmaf/score'));
+
+      final sessionId = SessionStore.instance.sessionId;
+      if (sessionId != null) {
+        request.headers['x-session-id'] = sessionId;
+      }
+
       request.files.add(await http.MultipartFile.fromPath(
         'distorted_video', path,
         filename: 'distorted_video.mp4',
@@ -283,12 +307,15 @@ class _VmafTestPageState extends State<VmafTestPage>
         throw Exception('Server error (${streamed.statusCode}): $body');
       }
 
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      if (!data.containsKey('vmaf_score')) {
-        throw Exception('Unexpected response from server.');
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(body) as Map<String, dynamic>;
+      } catch (e) {
+        final snippet = body.length > 300 ? '${body.substring(0, 300)}…' : body;
+        throw Exception('Invalid JSON response: $e. Body: $snippet');
       }
 
-      final score = (data['vmaf_score'] as num).toDouble();
+      final score = _parseVmafScore(data);
       widget.onProgressUpdate('Video test complete', 1.0);
       widget.onResultReady(TestResult(
         id:          TestId.vmaf,

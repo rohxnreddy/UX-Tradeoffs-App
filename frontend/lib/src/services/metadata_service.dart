@@ -23,6 +23,12 @@ class MetadataService {
 
   /// Collect device metadata silently in the background and POST to /device/metadata.
   /// Stores the returned session_id into [SessionStore].
+  ///
+  /// [testerName]           – display name from Google Sign-In (→ tester_name column).
+  ///                          Ignored if [SessionStore.googleDisplayName] is already set.
+  /// [questionnaireAnswers] – map with keys matching DB columns exactly:
+  ///     'device_usage', 'network_env', 'testing_purpose', 'usage_frequency'.
+  ///     Ignored if answers are already in [SessionStore].
   Future<void> collectAndSend({
     String? testerName,
     Map<String, String>? questionnaireAnswers,
@@ -67,13 +73,13 @@ class MetadataService {
     final screenData = _collectScreenMetrics();
 
     final futures = [
-      _deviceInfo(),       // 0
-      _packageInfo(),      // 1
-      _batteryInfo(),      // 2
-      _networkInfo(),      // 3
-      _collectPermissions(), // 4
+      _deviceInfo(),              // 0
+      _packageInfo(),             // 1
+      _batteryInfo(),             // 2
+      _networkInfo(),             // 3
+      _collectPermissions(),      // 4
       _collectMemoryAndStorage(), // 5
-      _collectAudioRoute(), // 6
+      _collectAudioRoute(),       // 6
       if (includeLocation) _collectLocation(), // 7 (conditional)
     ];
 
@@ -91,8 +97,8 @@ class MetadataService {
         : <String, dynamic>{};
 
     // country_code: prefer ISO code from reverse-geocoding, fall back to locale.
-    final geoIso    = location['iso_country_code'] as String?;
-    final localeIso = device['locale_country_code'] as String?;
+    final geoIso     = location['iso_country_code'] as String?;
+    final localeIso  = device['locale_country_code'] as String?;
     final countryCode =
         geoIso ?? (localeIso != null ? '$localeIso(locale)' : null);
 
@@ -104,8 +110,23 @@ class MetadataService {
     final session = SessionTracker.instance;
     final perf    = PerformanceTracker.instance;
 
+    // SessionStore is the authoritative source for identity + questionnaire.
+    // The caller-supplied arguments are used only as fallbacks.
+    final store = SessionStore.instance;
+
     return {
-      // Device hardware
+      // ── Tester identity (Google Sign-In) ──────────────────────────────────
+      'tester_name':      store.googleDisplayName ?? testerName,
+      'tester_email':     store.googleEmail,
+      'tester_photo_url': store.googlePhotoUrl,
+
+      // ── Questionnaire answers (flat DB column names) ──────────────────────
+      'device_usage':    store.deviceUsage    ?? questionnaireAnswers?['device_usage']    ?? '',
+      'network_env':     store.networkEnv     ?? questionnaireAnswers?['network_env']     ?? '',
+      'testing_purpose': store.testingPurpose ?? questionnaireAnswers?['testing_purpose'] ?? '',
+      'usage_frequency': store.usageFrequency ?? questionnaireAnswers?['usage_frequency'] ?? '',
+
+      // ── Device hardware ───────────────────────────────────────────────────
       'device_model':        device['model'],
       'device_brand':        device['brand'],
       'device_manufacturer': device['manufacturer'],
@@ -113,7 +134,8 @@ class MetadataService {
       'device_hardware':     device['hardware'],
       'supported_abis':      device['supported_abis'],
       'cpu_cores':           device['cpu_cores'],
-      // OS & system
+
+      // ── OS & system ───────────────────────────────────────────────────────
       'android_version':      device['android_version'],
       'sdk_version':          device['sdk_version'],
       'build_number':         device['build_number'],
@@ -122,72 +144,78 @@ class MetadataService {
       'bootloader':           device['bootloader'],
       'is_physical_device':   device['is_physical'],
       'is_rooted':            device['is_rooted'],
-      // App info
-      'app_package_name':    pkg['package_name'],
-      'app_version':         pkg['version_name'],
-      'app_version_code':    pkg['version_code'],
-      'app_build_number':    pkg['version_name'], // kept for back-compat
-      'app_installer_store': pkg['installer'],
-      'is_debug_build':      pkg['is_debug'],
-      // Screen
-      'screen_width_px':    screenData['width'],
-      'screen_height_px':   screenData['height'],
-      'screen_density':     screenData['density'],
+
+      // ── App info ──────────────────────────────────────────────────────────
+      'app_package_name':      pkg['package_name'],
+      'app_version_name':      pkg['version_name'],
+      'app_version_code':      pkg['version_code'],
+      'app_installer_package': pkg['installer'],
+      'is_debug_build':        pkg['is_debug'],
+
+      // ── Screen ────────────────────────────────────────────────────────────
+      'screen_width_px':      screenData['width'],
+      'screen_height_px':     screenData['height'],
+      'screen_density':       screenData['density'],
       'display_refresh_rate': screenData['refresh_rate'],
-      // Locale & regional
+
+      // ── Locale & regional ─────────────────────────────────────────────────
       'device_language': device['language'],
       'device_locale':   device['locale'],
       'timezone':        device['timezone'],
       'country_code':    countryCode,
-      // Battery
+
+      // ── Battery ───────────────────────────────────────────────────────────
       'battery_level': battery['level'],
       'battery_state': battery['state'],
-      // Network
-      'connection_type':      network['connection_type'],
-      'wifi_name':            network['wifi_name'],
-      'wifi_bssid':           network['wifi_bssid'],
-      'local_ipv4':           network['local_ipv4'],
-      'local_ipv6':           network['local_ipv6'],
-      'is_vpn_active':        network['is_vpn'],
-      'network_latency_ms':   network['latency_ms'],
+
+      // ── Network ───────────────────────────────────────────────────────────
+      'connection_type':        network['connection_type'],
+      'wifi_name':              network['wifi_name'],
+      'wifi_bssid':             network['wifi_bssid'],
+      'local_ipv4':             network['local_ipv4'],
+      'local_ipv6':             network['local_ipv6'],
+      'is_vpn_active':          network['is_vpn'],
+      'network_latency_ms':     network['latency_ms'],
       'network_speed_category': network['speed_category'],
-      // Location (only present when includeLocation = true)
+
+      // ── Location (only when includeLocation = true) ───────────────────────
       if (location.isNotEmpty) ...{
-        'latitude':         location['latitude'],
-        'longitude':        location['longitude'],
-        'altitude':         location['altitude'],
+        'latitude':          location['latitude'],
+        'longitude':         location['longitude'],
+        'altitude':          location['altitude'],
         'location_accuracy': location['accuracy'],
-        'speed':            location['speed'],
-        'bearing':          location['bearing'],
-        'locality':         location['locality'],
-        'country':          location['country'],
-        'postal_code':      location['postal_code'],
-        'admin_area':       location['admin_area'],
-        'iso_country_code': location['iso_country_code'],
+        'speed':             location['speed'],
+        'bearing':           location['bearing'],
+        'locality':          location['locality'],
+        'country':           location['country'],
+        'postal_code':       location['postal_code'],
+        'admin_area':        location['admin_area'],
+        'iso_country_code':  location['iso_country_code'],
       },
-      // Permissions
+
+      // ── Permissions ───────────────────────────────────────────────────────
       'permission_statuses': permissions['statuses'],
-      // Session
+
+      // ── Session activity ──────────────────────────────────────────────────
       'session_start':            session.sessionStart.toIso8601String(),
       'session_screen_views':     session.screenViews,
       'session_user_actions':     session.userActions,
       'session_background_count': session.backgroundCount,
-      // Performance
+
+      // ── Performance ───────────────────────────────────────────────────────
       'app_launch_time_ms': perf.launchTimeMs,
       'frame_drop_count':   perf.frameDropCount,
       'last_crash_info':    perf.lastCrashInfo,
-      // Memory & storage
-      'device_tier':     tier,
-      'total_ram_mb':    memStorage['total_ram_mb'],
+
+      // ── Memory & storage ──────────────────────────────────────────────────
+      'device_tier':      tier,
+      'total_ram_mb':     memStorage['total_ram_mb'],
       'available_ram_mb': memStorage['available_ram_mb'],
-      'total_disk_mb':   memStorage['total_disk_mb'],
-      'free_disk_mb':    memStorage['free_disk_mb'],
-      // Audio
+      'total_disk_mb':    memStorage['total_disk_mb'],
+      'free_disk_mb':     memStorage['free_disk_mb'],
+
+      // ── Audio ─────────────────────────────────────────────────────────────
       'audio_output_route': audio['route'],
-      // Meta
-      if (testerName != null) 'tester_name': testerName,
-      if (questionnaireAnswers != null) 'questionnaire': questionnaireAnswers,
-      'collected_at': DateTime.now().toIso8601String(),
     };
   }
 
@@ -222,24 +250,24 @@ class MetadataService {
         final locale = Platform.localeName;
         final parts  = locale.split('_');
         return {
-          'model':              info.model,
-          'brand':              info.brand,
-          'manufacturer':       info.manufacturer,
-          'product':            info.product,
-          'hardware':           info.hardware,
-          'supported_abis':     info.supportedAbis.join(', '),
-          'cpu_cores':          _cpuCoreCount(),
-          'android_version':    info.version.release,
-          'sdk_version':        info.version.sdkInt,
-          'build_number':       info.id,
-          'security_patch':     info.version.securityPatch,
-          'fingerprint':        info.fingerprint,
-          'bootloader':         info.bootloader,
-          'is_physical':        info.isPhysicalDevice,
-          'is_rooted':          await _checkRooted(),
-          'language':           parts.first,
-          'locale':             locale,
-          'timezone':           DateTime.now().timeZoneName,
+          'model':               info.model,
+          'brand':               info.brand,
+          'manufacturer':        info.manufacturer,
+          'product':             info.product,
+          'hardware':            info.hardware,
+          'supported_abis':      info.supportedAbis.join(', '),
+          'cpu_cores':           _cpuCoreCount(),
+          'android_version':     info.version.release,
+          'sdk_version':         info.version.sdkInt,
+          'build_number':        info.id,
+          'security_patch':      info.version.securityPatch,
+          'fingerprint':         info.fingerprint,
+          'bootloader':          info.bootloader,
+          'is_physical':         info.isPhysicalDevice,
+          'is_rooted':           await _checkRooted(),
+          'language':            parts.first,
+          'locale':              locale,
+          'timezone':            DateTime.now().timeZoneName,
           'locale_country_code': parts.length > 1 ? parts.last : null,
         };
       } else if (Platform.isIOS) {
@@ -247,14 +275,14 @@ class MetadataService {
         final locale = Platform.localeName;
         final parts  = locale.split('_');
         return {
-          'model':        info.model,
-          'brand':        'Apple',
-          'device_name':  info.name,
-          'is_physical':  info.isPhysicalDevice,
-          'ios_version':  info.systemVersion,
-          'language':     parts.first,
-          'locale':       locale,
-          'timezone':     DateTime.now().timeZoneName,
+          'model':               info.model,
+          'brand':               'Apple',
+          'device_name':         info.name,
+          'is_physical':         info.isPhysicalDevice,
+          'ios_version':         info.systemVersion,
+          'language':            parts.first,
+          'locale':              locale,
+          'timezone':            DateTime.now().timeZoneName,
           'locale_country_code': parts.length > 1 ? parts.last : null,
         };
       }
@@ -435,7 +463,6 @@ class MetadataService {
   Future<Map<String, dynamic>> _collectMemoryAndStorage() async {
     int? totalRamMb, availableRamMb, totalDiskMb, freeDiskMb;
 
-    // RAM via /proc/meminfo (Android only).
     try {
       final memInfo = File('/proc/meminfo').readAsStringSync();
       int? parseKb(String key) {
@@ -449,7 +476,6 @@ class MetadataService {
       availableRamMb = availableKb != null ? availableKb ~/ 1024 : null;
     } catch (_) {}
 
-    // Disk via `df /data` (Android).
     try {
       final result = await Process.run('df', ['/data']);
       if (result.exitCode == 0) {
@@ -606,18 +632,18 @@ class SessionTracker {
   static final SessionTracker instance = SessionTracker._();
 
   final DateTime _start = DateTime.now();
-  int _screenViews    = 0;
-  int _userActions    = 0;
+  int _screenViews     = 0;
+  int _userActions     = 0;
   int _backgroundCount = 0;
 
   void recordScreenView() => _screenViews++;
   void recordAction()     => _userActions++;
   void recordBackground() => _backgroundCount++;
 
-  DateTime get sessionStart    => _start;
-  int get screenViews          => _screenViews;
-  int get userActions          => _userActions;
-  int get backgroundCount      => _backgroundCount;
+  DateTime get sessionStart   => _start;
+  int get screenViews         => _screenViews;
+  int get userActions         => _userActions;
+  int get backgroundCount     => _backgroundCount;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -630,7 +656,7 @@ class PerformanceTracker {
 
   final Stopwatch _launchStopwatch = Stopwatch()..start();
   int? _launchTimeMs;
-  int _frameDrops      = 0;
+  int  _frameDrops    = 0;
   String? _lastCrashInfo;
 
   /// Call once Flutter has rendered its first frame:

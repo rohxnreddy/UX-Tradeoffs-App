@@ -4,8 +4,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../core/session_store.dart';
 import '../core/theme.dart';
 
-// DEV FLAG (toggle this)
-const bool kDevBypassLogin = true;
+// Set to true during local development to skip the Google sign-in UI.
+// MUST be false before releasing to testers.
+const bool kDevBypassLogin = false;
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoggedIn;
@@ -28,12 +29,12 @@ class _LoginScreenState extends State<LoginScreen>
   void initState() {
     super.initState();
 
-    // ✅ DEV BYPASS LOGIN
+    // DEV BYPASS — skips the sign-in screen entirely
     if (kDevBypassLogin) {
       Future.microtask(() {
         SessionStore.instance.setAuth(
-          name: "Dev User",
-          email: "dev@test.com",
+          name: 'Dev User',
+          email: 'dev@test.com',
           photoUrl: null,
         );
         widget.onLoggedIn();
@@ -64,6 +65,7 @@ class _LoginScreenState extends State<LoginScreen>
       final account = await _googleSignIn.signIn();
 
       if (account == null) {
+        // User dismissed the picker
         setState(() {
           _loading = false;
           _error = 'Sign-in cancelled';
@@ -71,6 +73,10 @@ class _LoginScreenState extends State<LoginScreen>
         return;
       }
 
+      // Store identity in SessionStore so metadata_service can read it later.
+      // tester_name  → account.displayName  (used as the human-readable name in DB)
+      // tester_email → account.email        (used as unique tester identifier in DB)
+      // tester_photo_url → account.photoUrl (stored for dashboard avatars, optional)
       SessionStore.instance.setAuth(
         name: account.displayName ?? account.email,
         email: account.email,
@@ -88,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    // 👇 Optional: avoid building UI at all during dev bypass
+    // Show a plain spinner while the dev bypass micro-task fires
     if (kDevBypassLogin) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -157,7 +163,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                 const Spacer(flex: 2),
 
-                // Google button
+                // Google sign-in button
                 _GoogleButton(
                   loading: _loading,
                   onTap: _loading ? null : _signIn,
@@ -199,14 +205,13 @@ class _LoginScreenState extends State<LoginScreen>
   }
 }
 
+// ── Google sign-in button ─────────────────────────────────────────────────────
+
 class _GoogleButton extends StatelessWidget {
   final bool loading;
   final VoidCallback? onTap;
 
-  const _GoogleButton({
-    required this.loading,
-    required this.onTap,
-  });
+  const _GoogleButton({required this.loading, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -291,6 +296,7 @@ class _GooglePainter extends CustomPainter {
       );
     }
 
+    // Inner white circle to create the "G" ring effect
     canvas.drawCircle(
       Offset(cx, cy),
       r * 0.55,

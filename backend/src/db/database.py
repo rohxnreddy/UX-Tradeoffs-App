@@ -15,6 +15,11 @@ async def get_pool() -> asyncpg.Pool:
     return _pool
 
 
+# Alias used by app.py for direct queries (e.g. GET /session/{id})
+# so callers don't have to import through the repository layer.
+get_pool_direct = get_pool
+
+
 async def init_pool() -> None:
     """Create the connection pool. Call once at application startup."""
     global _pool

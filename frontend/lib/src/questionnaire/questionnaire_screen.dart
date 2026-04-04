@@ -17,25 +17,25 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
   int _page = 0;
   bool _submitting = false;
 
-  // Answers
-  String? _usage;
-  String? _network;
-  String? _purpose;
-  String? _frequency;
+  // Answers — stored using the exact DB column names as keys
+  String? _usage;      // → device_usage
+  String? _network;    // → network_env
+  String? _purpose;    // → testing_purpose
+  String? _frequency;  // → usage_frequency
 
   static const _questions = [
     _Question(
-      key: 'usage',
+      key: 'device_usage',
       text: 'How do you primarily use your phone?',
       options: [
-        _Option('Media & streaming',       Icons.play_circle_outline),
-        _Option('Calls & communication',   Icons.call_outlined),
-        _Option('Work & productivity',     Icons.work_outline),
-        _Option('Gaming & entertainment',  Icons.games_outlined),
+        _Option('Media & streaming',      Icons.play_circle_outline),
+        _Option('Calls & communication',  Icons.call_outlined),
+        _Option('Work & productivity',    Icons.work_outline),
+        _Option('Gaming & entertainment', Icons.games_outlined),
       ],
     ),
     _Question(
-      key: 'network',
+      key: 'network_env',
       text: 'What\'s your typical network environment?',
       options: [
         _Option('Strong Wi-Fi (home/office)', Icons.wifi),
@@ -45,7 +45,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
       ],
     ),
     _Question(
-      key: 'purpose',
+      key: 'testing_purpose',
       text: 'What\'s the main purpose of this test?',
       options: [
         _Option('Personal research',    Icons.person_outline),
@@ -55,13 +55,13 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
       ],
     ),
     _Question(
-      key: 'frequency',
+      key: 'usage_frequency',
       text: 'How often do you run quality tests?',
       options: [
-        _Option('First time',     Icons.new_releases_outlined),
-        _Option('Occasionally',   Icons.hourglass_empty),
-        _Option('Weekly',         Icons.calendar_today_outlined),
-        _Option('Daily / often',  Icons.repeat),
+        _Option('First time',    Icons.new_releases_outlined),
+        _Option('Occasionally',  Icons.hourglass_empty),
+        _Option('Weekly',        Icons.calendar_today_outlined),
+        _Option('Daily / often', Icons.repeat),
       ],
     ),
   ];
@@ -101,7 +101,10 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
 
   Future<void> _submit() async {
     setState(() => _submitting = true);
+
     final store = SessionStore.instance;
+
+    // Persist answers in SessionStore (keys match DB column names)
     store.setAnswers(
       usage:     _usage     ?? '',
       network:   _network   ?? '',
@@ -109,9 +112,12 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
       frequency: _frequency ?? '',
     );
 
-    // Fire metadata collection in background — no await needed on UI
+    // Fire metadata collection — sends login + questionnaire + device info
+    // to POST /device/metadata and stores the returned session_id.
+    // This runs in the background; onDone() is called immediately so the
+    // user is not blocked waiting for the network round-trip.
     MetadataService.instance.collectAndSend(
-      testerName: store.googleEmail,
+      testerName: store.googleDisplayName,           // display name from Google Sign-In
       questionnaireAnswers: {
         'device_usage':    store.deviceUsage    ?? '',
         'network_env':     store.networkEnv     ?? '',
@@ -180,7 +186,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
 
             const SizedBox(height: 32),
 
-            // Options — paged
+            // Options — paged (physics locked; navigation is button-driven only)
             Expanded(
               child: PageView(
                 controller: _pageCtrl,
@@ -205,7 +211,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
               ),
             ),
 
-            // Next / finish button
+            // Next / Start Testing button
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
               child: AnimatedOpacity(
@@ -230,22 +236,22 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                     child: Center(
                       child: _submitting
                           ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.black,
-                              ),
-                            )
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
+                      )
                           : Text(
-                              isLast ? 'Start Testing' : 'Next',
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16,
-                                letterSpacing: 0.4,
-                              ),
-                            ),
+                        isLast ? 'Start Testing' : 'Next',
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -348,14 +354,14 @@ class _OptionTile extends StatelessWidget {
 // ── Data classes ──────────────────────────────────────────────────────────────
 
 class _Question {
-  final String     key;
-  final String     text;
+  final String        key;
+  final String        text;
   final List<_Option> options;
   const _Question({required this.key, required this.text, required this.options});
 }
 
 class _Option {
-  final String  label;
+  final String   label;
   final IconData icon;
   const _Option(this.label, this.icon);
 }

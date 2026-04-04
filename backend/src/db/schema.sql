@@ -1,6 +1,6 @@
 -- ============================================================
 --  Quality Testing Platform — PostgreSQL Schema
---  Tables: device_sessions  →  [vmaf|peaq|pesq|iqa|webrtc]_results
+--  Tables: device_sessions  →  [vmaf|peaq|pesq|iqa]_results
 -- ============================================================
 
 -- Enable UUID generation
@@ -13,6 +13,17 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS device_sessions (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at              TIMESTAMPTZ NOT NULL    DEFAULT now(),
+
+    -- Tester Identity (from Google Sign-In)
+    tester_name             TEXT,
+    tester_email            TEXT,
+    tester_photo_url        TEXT,
+
+    -- Questionnaire Answers
+    device_usage            TEXT,       -- e.g. "Media & streaming"
+    network_env             TEXT,       -- e.g. "Strong Wi-Fi (home/office)"
+    testing_purpose         TEXT,       -- e.g. "Personal research"
+    usage_frequency         TEXT,       -- e.g. "Weekly"
 
     -- Hardware
     device_model            TEXT,
@@ -104,9 +115,19 @@ CREATE TABLE IF NOT EXISTS device_sessions (
     audio_output_route      TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_device_sessions_created_at   ON device_sessions (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_device_model ON device_sessions (device_model);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_app_version  ON device_sessions (app_version_name);
+-- Run these if the table already exists (safe to run multiple times)
+ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS tester_name         TEXT;
+ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS tester_email        TEXT;
+ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS tester_photo_url    TEXT;
+ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS device_usage        TEXT;
+ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS network_env         TEXT;
+ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS testing_purpose     TEXT;
+ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS usage_frequency     TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_device_sessions_created_at    ON device_sessions (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_device_sessions_device_model  ON device_sessions (device_model);
+CREATE INDEX IF NOT EXISTS idx_device_sessions_app_version   ON device_sessions (app_version_name);
+CREATE INDEX IF NOT EXISTS idx_device_sessions_tester_email  ON device_sessions (tester_email);
 
 
 -- ─── 2. VMAF RESULTS ─────────────────────────────────────────────────────────
@@ -141,7 +162,6 @@ CREATE TABLE IF NOT EXISTS peaq_results (
     noise_filename          TEXT,           -- NULL when no noise file supplied
     has_noise_reduction     BOOLEAN NOT NULL DEFAULT FALSE,
 
-    -- Score
     -- Scores
     odg_score               NUMERIC(8,4),   -- Wiener-subtracted ODG (-4 to 0), primary score
     raw_odg                 NUMERIC(8,4),   -- Raw degraded ODG (no noise reduction)
@@ -158,13 +178,13 @@ CREATE INDEX IF NOT EXISTS idx_peaq_session    ON peaq_results (session_id);
 CREATE INDEX IF NOT EXISTS idx_peaq_created_at ON peaq_results (created_at DESC);
 
 
--- ─── 4. PESQ RESULTS (Formerly WebRTC) ───────────────────────────────────────────
+-- ─── 4. PESQ RESULTS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS pesq_results (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id              UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    -- 'simulated' = GET /webrtc/call ; 'device' = POST /webrtc/device-call
+    -- 'simulated' = GET /webrtc/call ; 'device' = POST /webrtc/device-call ; 'upload' = POST /pesq/score
     call_type               TEXT NOT NULL DEFAULT 'simulated',
 
     -- Scores
@@ -187,8 +207,8 @@ CREATE INDEX IF NOT EXISTS idx_pesq_created_at ON pesq_results (created_at DESC)
 CREATE INDEX IF NOT EXISTS idx_pesq_type       ON pesq_results (call_type);
 
 
--- ─── 6. IQA RESULTS ──────────────────────────────────────────────────────────
---  One parent row per POST /iqa/score call (can hold many images).
+-- ─── 5. IQA RESULTS ──────────────────────────────────────────────────────────
+--  One row per image within a POST /iqa/score batch call.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS iqa_results (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

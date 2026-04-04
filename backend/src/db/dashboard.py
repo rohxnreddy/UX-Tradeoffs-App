@@ -4,13 +4,16 @@ Run: streamlit run dashboard.py
 """
 
 import os
+from pathlib import Path
 import streamlit as st
 import pandas as pd
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load backend/src/.env consistently even when Streamlit is launched from repo root.
+_dotenv_path = Path(__file__).resolve().parents[1] / ".env"  # backend/src/.env
+load_dotenv(dotenv_path=_dotenv_path)
 
 st.set_page_config(page_title="DB Viewer", layout="wide")
 
@@ -44,44 +47,63 @@ tables = [
     "vmaf_results",
     "peaq_results",
     "pesq_results",
-    "iqa_results"
+    "iqa_results",
 ]
 
 selected_table = st.sidebar.selectbox("Select Table", tables)
-
 limit = st.sidebar.number_input("Limit rows", min_value=10, max_value=10000, value=100)
 
+
+# ─── Column sets ────────────────────────────────────────────
+
+# device_sessions: show all stored metadata columns.
+# This avoids the dashboard silently hiding newly-added fields.
+device_session_cols = "*"
+
+peaq_cols = """
+    id, session_id, created_at,
+    degraded_filename, noise_filename, has_noise_reduction,
+    raw_odg, odg_score AS wiener_odg, ffmpeg_odg,
+    odg_label, subtracted_audio_b64, raw_output
+"""
+
+pesq_cols = """
+    id, session_id, created_at,
+    call_type, recorded_filename,
+    direct_pesq, pstn_pesq, volte_pesq, voip_pesq,
+    degraded_audio_b64, raw_output
+"""
 
 # ─── Main ───────────────────────────────────────────────────
 
 st.title("Database Viewer")
 
-peaq_cols = """id, session_id, created_at,
-    degraded_filename, noise_filename, has_noise_reduction,
-    raw_odg, odg_score AS wiener_odg, ffmpeg_odg,
-    odg_label, subtracted_audio_b64, raw_output"""
-
-webrtc_cols = """id, session_id, created_at,
-    call_type, recorded_filename,
-    direct_pesq, pstn_pesq, volte_pesq, voip_pesq,
-    degraded_audio_b64, raw_output"""
-
-if selected_table == "peaq_results":
-    df = query(f"SELECT {peaq_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}")
+if selected_table == "device_sessions":
+    df = query(
+        f"SELECT {device_session_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
+    )
+elif selected_table == "peaq_results":
+    df = query(
+        f"SELECT {peaq_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
+    )
 elif selected_table == "pesq_results":
-    df = query(f"SELECT {webrtc_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}")
+    df = query(
+        f"SELECT {pesq_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
+    )
 else:
-    df = query(f"SELECT * FROM {selected_table} ORDER BY 1 DESC LIMIT {limit}")
+    df = query(
+        f"SELECT * FROM {selected_table} ORDER BY 1 DESC LIMIT {limit}"
+    )
 
 if df.empty:
     st.warning("No data found.")
 else:
-    st.write(f"Showing {len(df)} rows from `{selected_table}`")
+    st.write(f"Showing **{len(df)}** rows from `{selected_table}`")
     st.dataframe(df, use_container_width=True, hide_index=True)
 
     st.download_button(
-        "Download CSV",
+        "⬇ Download CSV",
         df.to_csv(index=False),
         f"{selected_table}.csv",
-        "text/csv"
+        "text/csv",
     )
