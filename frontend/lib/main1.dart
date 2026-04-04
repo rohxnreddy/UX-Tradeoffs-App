@@ -71,7 +71,7 @@ class _AppRouterState extends State<_AppRouter> {
       case _AppPage.splash:
         return SplashScreen(onDone: () {
           if (SessionStore.instance.isReady) {
-            MetadataService.instance.collectAndSend();
+            MetadataService.instance.collectAndSend(includeLocation: true);
             _go(_AppPage.home);
           } else if (SessionStore.instance.isLoggedIn) {
             _go(_AppPage.questionnaire);
@@ -83,7 +83,7 @@ class _AppRouterState extends State<_AppRouter> {
       case _AppPage.login:
         return LoginScreen(onLoggedIn: () {
           if (SessionStore.instance.hasAnswered) {
-             MetadataService.instance.collectAndSend();
+             MetadataService.instance.collectAndSend(includeLocation: true);
              _go(_AppPage.home);
           } else {
              _go(_AppPage.questionnaire);

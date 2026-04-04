@@ -1,5 +1,6 @@
 // lib/src/questionnaire/questionnaire_screen.dart
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../core/session_store.dart';
 import '../core/theme.dart';
 import '../services/metadata_service.dart';
@@ -22,6 +23,26 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
   String? _network;    // → network_env
   String? _purpose;    // → testing_purpose
   String? _frequency;  // → usage_frequency
+  bool _locationPrompted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _requestLocationPermission();
+  }
+
+  Future<void> _requestLocationPermission() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      setState(() => _locationPrompted = true);
+    } catch (_) {}
+  }
 
   static const _questions = [
     _Question(
@@ -118,6 +139,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
     // user is not blocked waiting for the network round-trip.
     MetadataService.instance.collectAndSend(
       testerName: store.googleDisplayName,           // display name from Google Sign-In
+      includeLocation: true,                         // Include GPS/Network location
       questionnaireAnswers: {
         'device_usage':    store.deviceUsage    ?? '',
         'network_env':     store.networkEnv     ?? '',
