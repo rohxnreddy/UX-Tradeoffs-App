@@ -19,7 +19,7 @@ class MetricRunnerHome extends StatefulWidget {
 
 class _MetricRunnerHomeState extends State<MetricRunnerHome> {
   final Battery _battery = Battery();
-  static const String _defaultApiBaseUrl = 'http://192.168.0.101:8000';
+  static const String _defaultApiBaseUrl = 'http://192.168.0.100:8000';
 
   final List<_StepResult> _results = <_StepResult>[];
   final List<_StepResult> _workingResults = <_StepResult>[];

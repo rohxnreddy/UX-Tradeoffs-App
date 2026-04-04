@@ -28,7 +28,9 @@ def query(sql):
             cur.execute(sql)
             rows = cur.fetchall()
         return pd.DataFrame([dict(r) for r in rows])
+
     except Exception as e:
+        conn.rollback()
         st.error(f"Query error: {e}")
         return pd.DataFrame()
 

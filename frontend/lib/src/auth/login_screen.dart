@@ -4,6 +4,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../core/session_store.dart';
 import '../core/theme.dart';
 
+// DEV FLAG (toggle this)
+const bool kDevBypassLogin = true;
+
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoggedIn;
   const LoginScreen({super.key, required this.onLoggedIn});
@@ -19,13 +22,28 @@ class _LoginScreenState extends State<LoginScreen>
   String? _error;
 
   late AnimationController _fadeCtrl;
-  late Animation<double>   _fade;
+  late Animation<double> _fade;
 
   @override
   void initState() {
     super.initState();
+
+    // ✅ DEV BYPASS LOGIN
+    if (kDevBypassLogin) {
+      Future.microtask(() {
+        SessionStore.instance.setAuth(
+          name: "Dev User",
+          email: "dev@test.com",
+          photoUrl: null,
+        );
+        widget.onLoggedIn();
+      });
+    }
+
     _fadeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 700));
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
     _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
   }
@@ -37,26 +55,46 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _signIn() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
     try {
       final account = await _googleSignIn.signIn();
+
       if (account == null) {
-        setState(() { _loading = false; _error = 'Sign-in cancelled'; });
+        setState(() {
+          _loading = false;
+          _error = 'Sign-in cancelled';
+        });
         return;
       }
+
       SessionStore.instance.setAuth(
-        name:     account.displayName ?? account.email,
-        email:    account.email,
+        name: account.displayName ?? account.email,
+        email: account.email,
         photoUrl: account.photoUrl,
       );
+
       widget.onLoggedIn();
     } catch (e) {
-      setState(() { _loading = false; _error = 'Sign-in failed: $e'; });
+      setState(() {
+        _loading = false;
+        _error = 'Sign-in failed: $e';
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 👇 Optional: avoid building UI at all during dev bypass
+    if (kDevBypassLogin) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppTheme.bg,
       body: FadeTransition(
@@ -67,6 +105,7 @@ class _LoginScreenState extends State<LoginScreen>
             child: Column(
               children: [
                 const Spacer(flex: 2),
+
                 // Icon
                 Container(
                   width: 72,
@@ -83,10 +122,15 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.lock_outline,
-                      color: AppTheme.accent, size: 32),
+                  child: const Icon(
+                    Icons.lock_outline,
+                    color: AppTheme.accent,
+                    size: 32,
+                  ),
                 ),
+
                 const SizedBox(height: 32),
+
                 // Heading
                 const Text(
                   'Sign in to continue',
@@ -97,9 +141,12 @@ class _LoginScreenState extends State<LoginScreen>
                     letterSpacing: -0.5,
                   ),
                 ),
+
                 const SizedBox(height: 10),
+
                 const Text(
-                  'Your organisation credentials are used\nto associate test results with your device.',
+                  'Your organisation credentials are used\n'
+                      'to associate test results with your device.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppTheme.textSec,
@@ -107,24 +154,33 @@ class _LoginScreenState extends State<LoginScreen>
                     height: 1.6,
                   ),
                 ),
+
                 const Spacer(flex: 2),
+
                 // Google button
                 _GoogleButton(
                   loading: _loading,
                   onTap: _loading ? null : _signIn,
                 ),
+
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Text(
                     _error!,
-                    style: const TextStyle(color: AppTheme.bad, fontSize: 13),
+                    style: const TextStyle(
+                      color: AppTheme.bad,
+                      fontSize: 13,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ],
+
                 const Spacer(),
+
                 // Footer
                 const Text(
-                  'Test data is stored securely and\nused only for quality research.',
+                  'Test data is stored securely and\n'
+                      'used only for quality research.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppTheme.textDim,
@@ -132,6 +188,7 @@ class _LoginScreenState extends State<LoginScreen>
                     height: 1.6,
                   ),
                 ),
+
                 const SizedBox(height: 24),
               ],
             ),
@@ -145,7 +202,11 @@ class _LoginScreenState extends State<LoginScreen>
 class _GoogleButton extends StatelessWidget {
   final bool loading;
   final VoidCallback? onTap;
-  const _GoogleButton({required this.loading, required this.onTap});
+
+  const _GoogleButton({
+    required this.loading,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -164,32 +225,31 @@ class _GoogleButton extends StatelessWidget {
           ),
           child: loading
               ? const Center(
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.accent,
-                    ),
-                  ),
-                )
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppTheme.accent,
+              ),
+            ),
+          )
               : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Google G icon — drawn with coloured circles
-                    _GoogleIcon(),
-                    const SizedBox(width: 14),
-                    const Text(
-                      'Continue with Google',
-                      style: TextStyle(
-                        color: AppTheme.textPri,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ],
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _GoogleIcon(),
+              const SizedBox(width: 14),
+              const Text(
+                'Continue with Google',
+                style: TextStyle(
+                  color: AppTheme.textPri,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
                 ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -212,20 +272,13 @@ class _GooglePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final r  = size.width / 2;
+    final r = size.width / 2;
 
     final colors = [
-      const Color(0xFF4285F4), // blue
-      const Color(0xFF34A853), // green
-      const Color(0xFFFBBC05), // yellow
-      const Color(0xFFEA4335), // red
-    ];
-
-    final rects = [
-      Rect.fromLTWH(cx, cy - r, r, r),          // top-right  blue
-      Rect.fromLTWH(cx, cy, r, r),               // bot-right  green
-      Rect.fromLTWH(cx - r, cy, r, r),           // bot-left   yellow
-      Rect.fromLTWH(cx - r, cy - r, r, r),       // top-left   red
+      const Color(0xFF4285F4),
+      const Color(0xFF34A853),
+      const Color(0xFFFBBC05),
+      const Color(0xFFEA4335),
     ];
 
     for (int i = 0; i < 4; i++) {
@@ -238,8 +291,11 @@ class _GooglePainter extends CustomPainter {
       );
     }
 
-    // White circle in centre
-    canvas.drawCircle(Offset(cx, cy), r * 0.55, Paint()..color = AppTheme.surface);
+    canvas.drawCircle(
+      Offset(cx, cy),
+      r * 0.55,
+      Paint()..color = AppTheme.surface,
+    );
   }
 
   @override

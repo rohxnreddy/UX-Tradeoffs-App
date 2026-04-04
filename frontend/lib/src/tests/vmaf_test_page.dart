@@ -380,7 +380,7 @@ class _VmafTestPageState extends State<VmafTestPage>
                             ),
                           ],
                         ),
-                        child: const Icon(Icons.screen_record,
+                        child: const Icon(Icons.fullscreen_rounded,
                             color: AppTheme.vmafColor, size: 44),
                       ),
                     ),

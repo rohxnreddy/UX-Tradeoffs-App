@@ -1,13 +1,31 @@
 // lib/src/runner/running_screen.dart
+//
+// Orchestrator — navigates to each test's dedicated page in sequence.
+// Tests that need hardware (camera, mic, screen recording) each have their own
+// full-screen page.  Battery runs in-process via BatteryRunner.
+//
+// Flow per selected test:
+//   1. Mark test as "running" in the progress list.
+//   2. Push the test's page via Navigator.push and await a TestResult.
+//   3. Store result, mark done/failed, move to next test.
+//   4. After all tests → auto-navigate to Results after 1.2 s.
+
 import 'dart:async';
 import 'package:flutter/material.dart';
+
 import '../core/theme.dart';
 import 'test_model.dart';
 import 'test_runner.dart';
 
+// Test page imports — each test lives in its own file.
+import '../tests/vmaf_test_page.dart';
+import '../tests/peaq_test_page.dart';
+import '../tests/pesq_test_page.dart';
+import '../tests/iqa_test_page.dart';
+
 class RunningScreen extends StatefulWidget {
-  final List<TestId>                        selectedTests;
-  final void Function(List<TestResult> r)   onDone;
+  final List<TestId>                      selectedTests;
+  final void Function(List<TestResult> r) onDone;
 
   const RunningScreen({
     super.key,
@@ -21,13 +39,14 @@ class RunningScreen extends StatefulWidget {
 
 class _RunningScreenState extends State<RunningScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _pulseCtrl;
+  late AnimationController      _pulseCtrl;
   final Map<TestId, TestProgress> _progress = {};
   TestId? _currentTest;
-  bool    _done = false;
-  String  _overallMsg = 'Preparing…';
-  List<TestResult> _results = [];
+  bool    _done        = false;
+  String  _overallMsg  = 'Preparing…';
+  final List<TestResult> _results = [];
 
+  // ── Design maps ──────────────────────────────────────────────────────────
   static const _testColors = {
     TestId.vmaf:    AppTheme.vmafColor,
     TestId.peaq:    AppTheme.peaqColor,
@@ -44,6 +63,8 @@ class _RunningScreenState extends State<RunningScreen>
     TestId.battery: Icons.battery_charging_full_outlined,
   };
 
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
+
   @override
   void initState() {
     super.initState();
@@ -51,18 +72,18 @@ class _RunningScreenState extends State<RunningScreen>
         vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
 
-    // Initialise progress entries
     for (final id in TestId.values) {
-      final isSelected = widget.selectedTests.contains(id);
+      final selected = widget.selectedTests.contains(id);
       _progress[id] = TestProgress(
         testId:   id,
-        status:   isSelected ? TestStatus.pending : TestStatus.skipped,
-        message:  isSelected ? 'Waiting…' : 'Skipped',
+        status:   selected ? TestStatus.pending : TestStatus.skipped,
+        message:  selected ? 'Waiting…' : 'Skipped',
         fraction: 0,
       );
     }
 
-    _start();
+    // Start after one frame so Navigator is ready.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _runAll());
   }
 
   @override
@@ -71,34 +92,126 @@ class _RunningScreenState extends State<RunningScreen>
     super.dispose();
   }
 
-  void _start() {
-    final runner = TestRunner(
-      selectedTests: widget.selectedTests,
-      onProgress:    (p) {
-        if (!mounted) return;
-        setState(() {
-          _progress[p.testId] = p;
-          if (p.status == TestStatus.running) {
-            _currentTest = p.testId;
-            _overallMsg  = p.message;
-          }
-        });
-      },
-    );
+  // ── Orchestration ─────────────────────────────────────────────────────────
 
-    runner.run().then((results) {
+  Future<void> _runAll() async {
+    for (final def in allTests) {
+      if (!widget.selectedTests.contains(def.id)) {
+        _results.add(TestResult(id: def.id, status: TestStatus.skipped));
+        continue;
+      }
+
+      // Mark running
       if (!mounted) return;
       setState(() {
-        _done     = true;
-        _results  = results;
-        _overallMsg = 'All tests complete!';
+        _currentTest = def.id;
+        _overallMsg  = 'Running ${def.title}…';
+        _progress[def.id] = TestProgress(
+          testId:   def.id,
+          status:   TestStatus.running,
+          message:  'Starting ${def.title}…',
+          fraction: 0,
+        );
       });
-      // Short delay so user sees "complete" before navigating
-      Future.delayed(const Duration(milliseconds: 1200), () {
-        if (mounted) widget.onDone(results);
+
+      TestResult result;
+      try {
+        result = await _dispatchTest(def);
+      } catch (e) {
+        result = TestResult(
+          id:           def.id,
+          status:       TestStatus.failed,
+          errorMessage: e.toString(),
+          completedAt:  DateTime.now(),
+        );
+      }
+
+      _results.add(result);
+
+      if (!mounted) return;
+      setState(() {
+        _progress[def.id] = TestProgress(
+          testId:   def.id,
+          status:   result.status,
+          message:  result.status == TestStatus.done
+              ? '${def.title} complete'
+              : 'Failed: ${result.errorMessage}',
+          fraction: 1,
+        );
       });
+    }
+
+    // All done
+    if (!mounted) return;
+    setState(() {
+      _done       = true;
+      _overallMsg = 'All tests complete!';
+    });
+
+    await Future.delayed(const Duration(milliseconds: 1200));
+    if (mounted) widget.onDone(_results);
+  }
+
+  // ── Dispatcher: push the right page and await its TestResult ─────────────
+
+  Future<TestResult> _dispatchTest(TestDefinition def) async {
+    switch (def.id) {
+      case TestId.vmaf:
+        return _pushPage(VmafTestPage(
+          onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
+        ));
+
+      case TestId.peaq:
+        return _pushPage(PeaqTestPage(
+          onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
+        ));
+
+      case TestId.pesq:
+        return _pushPage(PesqTestPage(
+          onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
+        ));
+
+      case TestId.iqa:
+        return _pushPage(IqaTestPage(
+          onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
+        ));
+
+      case TestId.battery:
+      // Battery has no UI — runs in-process with progress callbacks.
+        final runner = BatteryRunner(
+          onProgress: (p) {
+            if (mounted) setState(() => _progress[p.testId] = p);
+          },
+        );
+        return runner.run();
+    }
+  }
+
+  /// Push [page], which must pop with a [TestResult].
+  Future<TestResult> _pushPage(Widget page) async {
+    final result = await Navigator.of(context).push<TestResult>(
+      MaterialPageRoute(builder: (_) => page),
+    );
+    if (result == null) {
+      throw Exception('Test was cancelled or returned no result.');
+    }
+    return result;
+  }
+
+  void _emitProgress(TestId id, String msg, double frac) {
+    if (!mounted) return;
+    setState(() {
+      _progress[id] = TestProgress(
+        testId:   id,
+        status:   TestStatus.running,
+        message:  msg,
+        fraction: frac,
+      );
+      _overallMsg = msg;
     });
   }
+
+  // ── UI ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -109,12 +222,11 @@ class _RunningScreenState extends State<RunningScreen>
           children: [
             const SizedBox(height: 36),
 
-            // ── Central status ─────────────────────────────────────────────
+            // ── Central status ──────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
                 children: [
-                  // Pulse ring
                   AnimatedBuilder(
                     animation: _pulseCtrl,
                     builder: (_, __) => Container(
@@ -126,21 +238,25 @@ class _RunningScreenState extends State<RunningScreen>
                         border: Border.all(
                           color: _done
                               ? AppTheme.good
-                              : AppTheme.accent
-                                    .withOpacity(0.3 + 0.7 * _pulseCtrl.value),
+                              : AppTheme.accent.withOpacity(
+                              0.3 + 0.7 * _pulseCtrl.value),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
                             color: (_done ? AppTheme.good : AppTheme.accent)
-                                .withOpacity(_done ? 0.25 : 0.1 + 0.15 * _pulseCtrl.value),
+                                .withOpacity(_done
+                                ? 0.25
+                                : 0.1 + 0.15 * _pulseCtrl.value),
                             blurRadius: 32,
                             spreadRadius: 4,
                           ),
                         ],
                       ),
                       child: Icon(
-                        _done ? Icons.check_rounded : Icons.analytics_outlined,
+                        _done
+                            ? Icons.check_rounded
+                            : Icons.analytics_outlined,
                         color: _done ? AppTheme.good : AppTheme.accent,
                         size: 36,
                       ),
@@ -166,7 +282,7 @@ class _RunningScreenState extends State<RunningScreen>
 
             const SizedBox(height: 36),
 
-            // ── Test list ──────────────────────────────────────────────────
+            // ── Test list ───────────────────────────────────────────────────
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -177,12 +293,12 @@ class _RunningScreenState extends State<RunningScreen>
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _TestProgressTile(
-                      definition:  def,
-                      progress:    p,
-                      color:       color,
-                      icon:        icon,
-                      isCurrent:   _currentTest == def.id,
-                      pulseCtrl:   _pulseCtrl,
+                      definition: def,
+                      progress:   p,
+                      color:      color,
+                      icon:       icon,
+                      isCurrent:  _currentTest == def.id,
+                      pulseCtrl:  _pulseCtrl,
                     ),
                   );
                 }).toList(),
@@ -195,14 +311,14 @@ class _RunningScreenState extends State<RunningScreen>
   }
 }
 
-// ── Progress tile ─────────────────────────────────────────────────────────────
+// ── Progress tile (unchanged from original) ───────────────────────────────────
 
 class _TestProgressTile extends StatelessWidget {
-  final TestDefinition    definition;
-  final TestProgress      progress;
-  final Color             color;
-  final IconData          icon;
-  final bool              isCurrent;
+  final TestDefinition      definition;
+  final TestProgress        progress;
+  final Color               color;
+  final IconData            icon;
+  final bool                isCurrent;
   final AnimationController pulseCtrl;
 
   const _TestProgressTile({
@@ -220,11 +336,14 @@ class _TestProgressTile extends StatelessWidget {
 
     Widget trailing;
     if (st == TestStatus.done) {
-      trailing = const Icon(Icons.check_circle, color: AppTheme.good, size: 22);
+      trailing =
+      const Icon(Icons.check_circle, color: AppTheme.good, size: 22);
     } else if (st == TestStatus.failed) {
-      trailing = const Icon(Icons.error_outline, color: AppTheme.bad, size: 22);
+      trailing =
+      const Icon(Icons.error_outline, color: AppTheme.bad, size: 22);
     } else if (st == TestStatus.skipped) {
-      trailing = const Icon(Icons.remove_circle_outline, color: AppTheme.textDim, size: 22);
+      trailing = const Icon(Icons.remove_circle_outline,
+          color: AppTheme.textDim, size: 22);
     } else if (st == TestStatus.running) {
       trailing = AnimatedBuilder(
         animation: pulseCtrl,
@@ -255,15 +374,15 @@ class _TestProgressTile extends StatelessWidget {
         color: isCurrent
             ? color.withOpacity(0.08)
             : (st == TestStatus.done || st == TestStatus.failed)
-                ? AppTheme.surface
-                : AppTheme.surface.withOpacity(0.5),
+            ? AppTheme.surface
+            : AppTheme.surface.withOpacity(0.5),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isCurrent
               ? color.withOpacity(0.4)
               : st == TestStatus.done
-                  ? AppTheme.good.withOpacity(0.25)
-                  : AppTheme.border,
+              ? AppTheme.good.withOpacity(0.25)
+              : AppTheme.border,
         ),
       ),
       child: Row(
@@ -273,8 +392,8 @@ class _TestProgressTile extends StatelessWidget {
             color: st == TestStatus.skipped
                 ? AppTheme.textDim
                 : (st == TestStatus.done || isCurrent)
-                    ? color
-                    : AppTheme.textSec,
+                ? color
+                : AppTheme.textSec,
             size: 20,
           ),
           const SizedBox(width: 14),
@@ -311,9 +430,10 @@ class _TestProgressTile extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(2),
                     child: LinearProgressIndicator(
-                      value: progress.fraction,
+                      value:           progress.fraction,
                       backgroundColor: AppTheme.border,
-                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                      valueColor:
+                      AlwaysStoppedAnimation<Color>(color),
                       minHeight: 2,
                     ),
                   ),

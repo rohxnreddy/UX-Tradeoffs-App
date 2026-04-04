@@ -34,6 +34,14 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
+  static const _testNames = {
+    TestId.vmaf:    'Video Experience',
+    TestId.peaq:    'Audio Quality',
+    TestId.pesq:    'Voice Clarity',
+    TestId.iqa:     'Image Quality',
+    TestId.battery: 'Battery Health',
+  };
+
   static const _testColors = {
     TestId.vmaf:    AppTheme.vmafColor,
     TestId.peaq:    AppTheme.peaqColor,
@@ -66,7 +74,6 @@ class _HomeScreenState extends State<HomeScreen>
         child: SafeArea(
           child: Column(
             children: [
-              // ── Header ────────────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
                 child: Row(
@@ -95,7 +102,6 @@ class _HomeScreenState extends State<HomeScreen>
                         ],
                       ),
                     ),
-                    // Avatar
                     if (store.googlePhotoUrl != null)
                       CircleAvatar(
                         radius: 20,
@@ -119,7 +125,6 @@ class _HomeScreenState extends State<HomeScreen>
 
               const SizedBox(height: 28),
 
-              // ── Duration chip ──────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
@@ -141,7 +146,6 @@ class _HomeScreenState extends State<HomeScreen>
 
               const SizedBox(height: 20),
 
-              // ── Test list ──────────────────────────────────────────────────
               Expanded(
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -152,8 +156,10 @@ class _HomeScreenState extends State<HomeScreen>
                     final color   = _testColors[def.id]!;
                     final icon    = _testIcons[def.id]!;
                     final checked = _selected.contains(def.id);
+                    final displayName = _testNames[def.id] ?? def.title;
 
                     return _TestCard(
+                      title:      displayName,
                       definition: def,
                       color:      color,
                       icon:       icon,
@@ -172,7 +178,6 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
 
-              // ── Start button ───────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
                 child: AnimatedOpacity(
@@ -229,8 +234,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-// ── Subwidgets ────────────────────────────────────────────────────────────────
-
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String   label;
@@ -258,6 +261,7 @@ class _InfoChip extends StatelessWidget {
 }
 
 class _TestCard extends StatelessWidget {
+  final String         title;
   final TestDefinition definition;
   final Color          color;
   final IconData       icon;
@@ -265,6 +269,7 @@ class _TestCard extends StatelessWidget {
   final VoidCallback   onToggle;
 
   const _TestCard({
+    required this.title,
     required this.definition,
     required this.color,
     required this.icon,
@@ -289,7 +294,6 @@ class _TestCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Icon badge
             Container(
               width: 44,
               height: 44,
@@ -301,13 +305,12 @@ class _TestCard extends StatelessWidget {
               child: Icon(icon, color: color, size: 22),
             ),
             const SizedBox(width: 16),
-            // Text
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    definition.title,
+                    title,
                     style: TextStyle(
                       color: checked ? AppTheme.textPri : AppTheme.textSec,
                       fontSize: 15,
@@ -325,7 +328,6 @@ class _TestCard extends StatelessWidget {
                 ],
               ),
             ),
-            // Est time
             Text(
               '~${definition.estimatedSeconds}s',
               style: const TextStyle(
@@ -334,7 +336,6 @@ class _TestCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            // Checkbox
             AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               width: 22,

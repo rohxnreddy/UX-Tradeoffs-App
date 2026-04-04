@@ -261,7 +261,7 @@ class DeviceMeta {
   };
 }
 
-String _apiBaseUrl = 'http://192.168.0.101:8000';
+String _apiBaseUrl = 'http://192.168.0.100:8000';
 Future<void> sendMetadata(DeviceMeta meta) async {
   final response = await http.post(
     Uri.parse('$_apiBaseUrl/device/metadata'),

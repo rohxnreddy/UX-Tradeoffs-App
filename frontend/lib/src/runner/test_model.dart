@@ -3,11 +3,11 @@
 enum TestId { vmaf, peaq, pesq, iqa, battery }
 
 class TestDefinition {
-  final TestId   id;
-  final String   title;
-  final String   subtitle;
-  final String   iconPath; // material icon name, use enum below
-  final int      estimatedSeconds;
+  final TestId id;
+  final String title;
+  final String subtitle;
+  final String iconPath;
+  final int    estimatedSeconds;
 
   const TestDefinition({
     required this.id,
@@ -56,16 +56,16 @@ const List<TestDefinition> allTests = [
   ),
 ];
 
-// ── Result ────────────────────────────────────────────────────────────────────
+// ── Status / Result ───────────────────────────────────────────────────────────
 
 enum TestStatus { pending, running, done, failed, skipped }
 
 class TestResult {
-  final TestId    id;
-  final TestStatus status;
-  final Map<String, dynamic> scores;  // key-value pairs to show in results
-  final String?   errorMessage;
-  final DateTime? completedAt;
+  final TestId              id;
+  final TestStatus          status;
+  final Map<String, dynamic> scores;
+  final String?             errorMessage;
+  final DateTime?           completedAt;
 
   const TestResult({
     required this.id,
@@ -80,11 +80,12 @@ class TestResult {
     Map<String, dynamic>?  scores,
     String?                errorMessage,
     DateTime?              completedAt,
-  }) => TestResult(
-    id:           id,
-    status:       status        ?? this.status,
-    scores:       scores        ?? this.scores,
-    errorMessage: errorMessage  ?? this.errorMessage,
-    completedAt:  completedAt   ?? this.completedAt,
-  );
+  }) =>
+      TestResult(
+        id:           id,
+        status:       status       ?? this.status,
+        scores:       scores       ?? this.scores,
+        errorMessage: errorMessage ?? this.errorMessage,
+        completedAt:  completedAt  ?? this.completedAt,
+      );
 }
