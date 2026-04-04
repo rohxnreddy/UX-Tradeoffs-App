@@ -5,6 +5,9 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from datetime import datetime
 import multiprocessing
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
+import os
 
 class VMAFError(Exception):
     pass
@@ -13,13 +16,13 @@ REFERENCE_VIDEO = Path(__file__).resolve().with_name("reference.mp4")
 DEBUG_DIR = Path("debugvideo")
 
 
-def get_video_info(path: Path):
-    """Extracts width, height, and FPS."""
+def get_video_metadata(path: Path):
+    """Extracts width, height, FPS, and duration in a single ffprobe call."""
     cmd = [
         "ffprobe",
         "-v", "error",
         "-select_streams", "v:0",
-        "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate",
+        "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate:format=duration",
         "-of", "json",
         str(path)
     ]
@@ -27,12 +30,15 @@ def get_video_info(path: Path):
         out = subprocess.check_output(cmd, stderr=subprocess.PIPE)
         info = json.loads(out)
         stream = info["streams"][0]
+        fmt    = info["format"]
 
         width  = int(stream["width"])
         height = int(stream["height"])
+        duration = float(fmt["duration"])
 
         def parse(s):
             try:
+                if not s or s == "0/0": return 0
                 n, d = map(int, s.split("/"))
                 return n / d if d else 0
             except Exception:
@@ -41,27 +47,18 @@ def get_video_info(path: Path):
         fps = parse(stream.get("avg_frame_rate", "0/0"))
         if fps <= 0 or fps > 240:
             fps = parse(stream.get("r_frame_rate", "0/0"))
-        if fps > 240:
+        if fps <= 0 or fps > 240:
             fps = 60.0
 
-        return width, height, fps
+        return width, height, fps, duration
     except Exception as e:
         raise VMAFError(f"Failed to get video info for {path}: {e}")
 
 
-def get_video_duration(path: Path) -> float:
-    cmd = [
-        "ffprobe",
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(path)
-    ]
-    try:
-        out = subprocess.check_output(cmd, stderr=subprocess.PIPE)
-        return float(out.strip())
-    except Exception as e:
-        raise VMAFError(f"Failed to get duration for {path}: {e}")
+@lru_cache(maxsize=1)
+def get_reference_metadata():
+    """Cached reference video metadata."""
+    return get_video_metadata(REFERENCE_VIDEO)
 
 
 def find_content_start(path: Path, duration: float) -> float:
@@ -178,28 +175,35 @@ def compute_vmaf(
     if not dist_path.exists():
         raise VMAFError(f"Distorted video not found: {dist_path}")
 
-    ref_width, ref_height, ref_fps = get_video_info(ref_path)
-    dist_duration = get_video_duration(dist_path)
-    ref_duration  = get_video_duration(ref_path)
+    # Use cached reference info
+    if ref_path == REFERENCE_VIDEO.resolve():
+        ref_width, ref_height, ref_fps, _ = get_reference_metadata()
+    else:
+        ref_width, ref_height, ref_fps, _ = get_video_metadata(ref_path)
+
+    dist_width, dist_height, dist_fps, dist_duration = get_video_metadata(dist_path)
 
     seek_duration = 20
 
-    # Use scene detection to find the exact frame where video playback starts.
-    # dist_start = that exact timestamp → compare dist[content_start : content_start+20s]
-    # ref_start  = 0.0                  → compare ref[0s : 20s]
-    dist_start = find_content_start(dist_path, dist_duration)
+    # Parallelize pre-processing (scenedetect and cropdetect)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_start = executor.submit(find_content_start, dist_path, dist_duration)
+        f_crop  = executor.submit(detect_crop_parameters, dist_path, dist_duration)
+
+        dist_start = f_start.result()
+        crop_filter = f_crop.result()
+
     ref_start  = 0.0
 
-    crop_filter = detect_crop_parameters(dist_path, dist_duration)
     print(f"Detected Crop: {crop_filter}")
     print(f"ref  [{ref_start:.4f}s → {ref_start + seek_duration:.4f}s]")
     print(f"dist [{dist_start:.4f}s → {dist_start + seek_duration:.4f}s]")
 
-    # Uncomment to save a debug clip:
-    # save_debug_video(dist_path, dist_start, crop_filter)
-
     with NamedTemporaryFile(suffix=".json", delete=False) as tmp:
         output_json = Path(tmp.name)
+
+    # libvmaf multi-threading
+    n_threads = os.cpu_count() or 4
 
     dist_chain = f"[1:v]trim=start={dist_start}:duration={seek_duration},setpts=PTS-STARTPTS"
     if crop_filter != "null":
@@ -225,6 +229,7 @@ def compute_vmaf(
     cmd = [
         "ffmpeg",
         "-y",
+        "-threads", str(n_threads),
         "-i", str(ref_path),
         "-i", str(dist_path),
         "-lavfi", vmaf_filter,
