@@ -46,7 +46,17 @@ class _RunningScreenState extends State<RunningScreen>
   String  _overallMsg  = 'Preparing…';
   final List<TestResult> _results = [];
 
+  Completer<TestResult>? _vmafCompleter;
+
   // ── Design maps ──────────────────────────────────────────────────────────
+  static const _testNames = {
+    TestId.vmaf:    'Video Experience',
+    TestId.peaq:    'Audio Quality',
+    TestId.pesq:    'Voice Clarity',
+    TestId.iqa:     'Camera Quality',
+    TestId.battery: 'Battery Health',
+  };
+
   static const _testColors = {
     TestId.vmaf:    AppTheme.vmafColor,
     TestId.peaq:    AppTheme.peaqColor,
@@ -105,11 +115,11 @@ class _RunningScreenState extends State<RunningScreen>
       if (!mounted) return;
       setState(() {
         _currentTest = def.id;
-        _overallMsg  = 'Running ${def.title}…';
+        _overallMsg  = 'Running ${_testNames[def.id]}…';
         _progress[def.id] = TestProgress(
           testId:   def.id,
           status:   TestStatus.running,
-          message:  'Starting ${def.title}…',
+          message:  'Starting ${_testNames[def.id]}…',
           fraction: 0,
         );
       });
@@ -130,18 +140,57 @@ class _RunningScreenState extends State<RunningScreen>
 
       if (!mounted) return;
       setState(() {
+        // If VMAF returned a placeholder (status=running), show it as uploading.
+        final isVmafPending =
+            result.id == TestId.vmaf && result.status == TestStatus.running;
         _progress[def.id] = TestProgress(
           testId:   def.id,
-          status:   result.status,
-          message:  result.status == TestStatus.done
-              ? '${def.title} complete'
+          status:   isVmafPending ? TestStatus.running : result.status,
+          message:  isVmafPending
+              ? 'Uploading in background…'
+              : result.status == TestStatus.done
+              ? '${_testNames[def.id]} complete'
               : 'Failed: ${result.errorMessage}',
-          fraction: 1,
+          fraction: isVmafPending ? 0.75 : 1,
         );
       });
     }
 
-    // All done
+    // All done with foreground tests
+    if (!mounted) return;
+
+    // If VMAF is uploading in background, wait for it before showing Results.
+    if (_vmafCompleter != null && !_vmafCompleter!.isCompleted) {
+      setState(() {
+        _overallMsg = 'Finishing video upload…';
+        _progress[TestId.vmaf] = TestProgress(
+          testId:   TestId.vmaf,
+          status:   TestStatus.running,
+          message:  'Uploading in background…',
+          fraction: 0.85,
+        );
+      });
+
+      final vmafResult = await _vmafCompleter!.future;
+
+      // Patch the placeholder in _results.
+      final idx = _results.indexWhere((r) => r.id == TestId.vmaf);
+      if (idx != -1) _results[idx] = vmafResult;
+
+      if (mounted) {
+        setState(() {
+          _progress[TestId.vmaf] = TestProgress(
+            testId:   TestId.vmaf,
+            status:   vmafResult.status,
+            message:  vmafResult.status == TestStatus.done
+                ? '${_testNames[TestId.vmaf]} complete'
+                : 'Failed: ${vmafResult.errorMessage}',
+            fraction: 1,
+          );
+        });
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _done       = true;
@@ -157,8 +206,14 @@ class _RunningScreenState extends State<RunningScreen>
   Future<TestResult> _dispatchTest(TestDefinition def) async {
     switch (def.id) {
       case TestId.vmaf:
+        _vmafCompleter = Completer<TestResult>();
         return _pushPage(VmafTestPage(
           onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
+          onResultReady: (result) {
+            if (!(_vmafCompleter?.isCompleted ?? true)) {
+              _vmafCompleter!.complete(result);
+            }
+          },
         ));
 
       case TestId.peaq:
@@ -229,7 +284,7 @@ class _RunningScreenState extends State<RunningScreen>
                 children: [
                   AnimatedBuilder(
                     animation: _pulseCtrl,
-                    builder: (_, __) => Container(
+                    builder: (context, _) => Container(
                       width: 80,
                       height: 80,
                       decoration: BoxDecoration(
@@ -293,12 +348,13 @@ class _RunningScreenState extends State<RunningScreen>
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _TestProgressTile(
-                      definition: def,
-                      progress:   p,
-                      color:      color,
-                      icon:       icon,
-                      isCurrent:  _currentTest == def.id,
-                      pulseCtrl:  _pulseCtrl,
+                      definition:  def,
+                      displayName: _testNames[def.id]!,
+                      progress:    p,
+                      color:       color,
+                      icon:        icon,
+                      isCurrent:   _currentTest == def.id,
+                      pulseCtrl:   _pulseCtrl,
                     ),
                   );
                 }).toList(),
@@ -315,6 +371,7 @@ class _RunningScreenState extends State<RunningScreen>
 
 class _TestProgressTile extends StatelessWidget {
   final TestDefinition      definition;
+  final String              displayName;
   final TestProgress        progress;
   final Color               color;
   final IconData            icon;
@@ -323,6 +380,7 @@ class _TestProgressTile extends StatelessWidget {
 
   const _TestProgressTile({
     required this.definition,
+    required this.displayName,
     required this.progress,
     required this.color,
     required this.icon,
@@ -347,7 +405,7 @@ class _TestProgressTile extends StatelessWidget {
     } else if (st == TestStatus.running) {
       trailing = AnimatedBuilder(
         animation: pulseCtrl,
-        builder: (_, __) => SizedBox(
+        builder: (context, _) => SizedBox(
           width: 22,
           height: 22,
           child: CircularProgressIndicator(
@@ -402,7 +460,7 @@ class _TestProgressTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  definition.title,
+                  displayName,
                   style: TextStyle(
                     color: st == TestStatus.skipped
                         ? AppTheme.textDim

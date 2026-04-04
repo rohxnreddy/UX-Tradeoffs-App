@@ -81,10 +81,10 @@ class _PeaqTestPageState extends State<PeaqTestPage>
 
     try {
       // 0. Permission check
-      _update('Checking microphone permission…', 0.02);
+      _update('Checking microphone access…', 0.02);
       if (!await _recorder.hasPermission()) {
         throw Exception(
-            'Microphone permission denied. Grant access in Settings.');
+            'Microphone access is required. Please allow it in Settings.');
       }
 
       final tmpDir      = await getTemporaryDirectory();
@@ -92,7 +92,7 @@ class _PeaqTestPageState extends State<PeaqTestPage>
       final degradedPath = '${tmpDir.path}/peaq_degraded.wav';
 
       // 1. Record room noise (3 s)
-      _update('Recording room noise (3 s)… keep the room as-is.', 0.10);
+      _update('Listening to the room for 3 seconds… stay quiet.', 0.10);
       await _recorder.start(
         const RecordConfig(
           encoder: AudioEncoder.wav,
@@ -103,17 +103,17 @@ class _PeaqTestPageState extends State<PeaqTestPage>
           autoGain: false,
           audioInterruption: AudioInterruptionMode.none,
           androidConfig:
-              AndroidRecordConfig(audioSource: AndroidAudioSource.camcorder),
+          AndroidRecordConfig(audioSource: AndroidAudioSource.camcorder),
         ),
         path: noisePath,
       );
       await Future.delayed(const Duration(seconds: 3));
       await _recorder.stop();
-      _update('Room noise captured ✓', 0.25);
+      _update('Background captured ✓', 0.25);
       await Future.delayed(const Duration(milliseconds: 800));
 
       // 2. Download reference audio
-      _update('Downloading reference audio from server…', 0.30);
+      _update('Downloading audio sample…', 0.30);
       final audioRes = await http
           .get(Uri.parse('$_apiBase/audio/peaq'))
           .timeout(const Duration(seconds: 30));
@@ -125,7 +125,7 @@ class _PeaqTestPageState extends State<PeaqTestPage>
       await File(refPath).writeAsBytes(audioRes.bodyBytes);
 
       // 3. Play reference & record degraded simultaneously
-      _update('Playing reference & recording… hold phone normally.', 0.40);
+      _update('Playing audio — keep the phone still and speaker unblocked.', 0.40);
       await _recorder.start(
         const RecordConfig(
           encoder: AudioEncoder.wav,
@@ -136,7 +136,7 @@ class _PeaqTestPageState extends State<PeaqTestPage>
           autoGain: false,
           audioInterruption: AudioInterruptionMode.none,
           androidConfig:
-              AndroidRecordConfig(audioSource: AndroidAudioSource.camcorder),
+          AndroidRecordConfig(audioSource: AndroidAudioSource.camcorder),
         ),
         path: degradedPath,
       );
@@ -146,11 +146,11 @@ class _PeaqTestPageState extends State<PeaqTestPage>
       await _refPlayer.setVolume(1.0);
       await _refPlayer.play();
       await _refPlayer.playerStateStream.firstWhere(
-          (s) => s.processingState == ProcessingState.completed);
+              (s) => s.processingState == ProcessingState.completed);
       await Future.delayed(const Duration(milliseconds: 500));
       await _recorder.stop();
       await SpeakerControl.disableSpeaker();
-      _update('Audio captured ✓  Uploading for analysis…', 0.65);
+      _update('Audio captured ✓  Sending for analysis…', 0.65);
 
       // 4. Validate files
       final degradedFile = File(degradedPath);
@@ -161,19 +161,19 @@ class _PeaqTestPageState extends State<PeaqTestPage>
 
       // 5. Upload to /peaq/score
       final req =
-          http.MultipartRequest('POST', Uri.parse('$_apiBase/peaq/score'));
+      http.MultipartRequest('POST', Uri.parse('$_apiBase/peaq/score'));
       req.files.add(await http.MultipartFile.fromPath(
           'degraded_audio', degradedPath));
       req.files
           .add(await http.MultipartFile.fromPath('room_noise', noisePath));
       if (_sessionId != null) req.headers['x-session-id'] = _sessionId!;
 
-      _update('Uploading for analysis…', 0.75);
+      _update('Analysing audio…', 0.75);
       final streamed =
-          await req.send().timeout(const Duration(minutes: 2));
+      await req.send().timeout(const Duration(minutes: 2));
       final body = await streamed.stream.bytesToString();
       if (streamed.statusCode != 200) {
-        throw Exception('PEAQ server error (${streamed.statusCode}): $body');
+        throw Exception('Server error (${streamed.statusCode}): $body');
       }
 
       final data = jsonDecode(body) as Map<String, dynamic>;
@@ -187,13 +187,12 @@ class _PeaqTestPageState extends State<PeaqTestPage>
         _wienerOdg = wien;
       });
 
-      _update('PEAQ complete', 1.0);
-      await Future.delayed(const Duration(seconds: 2));
+      _update('Audio test complete', 1.0);
 
       _finishWithSuccess({
-        'ODG Score':  odg?.toStringAsFixed(2)  ?? 'N/A',
-        'Raw ODG':    raw?.toStringAsFixed(2)   ?? 'N/A',
-        if (wien != null) 'Wiener ODG': wien.toStringAsFixed(2),
+        'Audio Quality Score': odg?.toStringAsFixed(2)  ?? 'N/A',
+        'Raw Score':           raw?.toStringAsFixed(2)   ?? 'N/A',
+        if (wien != null) 'Clarity Score': wien.toStringAsFixed(2),
       });
     } catch (e) {
       _finishWithError(e.toString());
@@ -260,45 +259,42 @@ class _PeaqTestPageState extends State<PeaqTestPage>
                         color: AppTheme.peaqColor, size: 28),
                   ),
                   const SizedBox(height: 16),
-                  const Text('PEAQ Test',
+                  const Text('Audio Quality Test',
                       style: TextStyle(
                           color: AppTheme.textPri,
                           fontSize: 22,
                           fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
-                  const Text('Audio perceptual quality',
+                  const Text('Measuring how clearly your speaker sounds',
                       style: TextStyle(
                           color: AppTheme.textSec, fontSize: 13)),
                   const SizedBox(height: 36),
 
-                  // Score or pulse ring
-                  if (_odgScore != null)
-                    _OdgDisplay(odg: _odgScore!, raw: _rawOdg, wiener: _wienerOdg)
-                  else
-                    AnimatedBuilder(
-                      animation: _pulseCtrl,
-                      builder: (_, __) => Container(
-                        width: 120, height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.surface,
-                          border: Border.all(
-                            color: AppTheme.peaqColor.withOpacity(
-                                0.3 + 0.7 * _pulseCtrl.value),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.peaqColor.withOpacity(
-                                  0.08 + 0.12 * _pulseCtrl.value),
-                              blurRadius: 32, spreadRadius: 4,
-                            ),
-                          ],
+                  // Pulse ring (always shown while test runs)
+                  AnimatedBuilder(
+                    animation: _pulseCtrl,
+                    builder: (_, __) => Container(
+                      width: 120, height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppTheme.surface,
+                        border: Border.all(
+                          color: AppTheme.peaqColor.withOpacity(
+                              0.3 + 0.7 * _pulseCtrl.value),
+                          width: 1.5,
                         ),
-                        child: const Icon(Icons.mic_outlined,
-                            color: AppTheme.peaqColor, size: 44),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.peaqColor.withOpacity(
+                                0.08 + 0.12 * _pulseCtrl.value),
+                            blurRadius: 32, spreadRadius: 4,
+                          ),
+                        ],
                       ),
+                      child: const Icon(Icons.mic_outlined,
+                          color: AppTheme.peaqColor, size: 44),
                     ),
+                  ),
 
                   const SizedBox(height: 32),
 
@@ -353,11 +349,11 @@ class _OdgDisplay extends StatelessWidget {
   }
 
   String _odgLabel(double v) {
-    if (v >= -1) return 'IMPERCEPTIBLE';
-    if (v >= -2) return 'PERCEPTIBLE';
-    if (v >= -3) return 'SLIGHTLY ANNOYING';
-    if (v >= -4) return 'ANNOYING';
-    return 'VERY ANNOYING';
+    if (v >= -1) return 'EXCELLENT';
+    if (v >= -2) return 'GOOD';
+    if (v >= -3) return 'FAIR';
+    if (v >= -4) return 'POOR';
+    return 'VERY POOR';
   }
 
   @override
@@ -408,7 +404,7 @@ class _OdgDisplay extends StatelessWidget {
       ],
       const SizedBox(height: 8),
       const Text(
-        'Scale: −4 (very annoying) → 0 (imperceptible)',
+        'Higher scores = better quality',
         style: TextStyle(color: AppTheme.textDim, fontSize: 11),
         textAlign: TextAlign.center,
       ),

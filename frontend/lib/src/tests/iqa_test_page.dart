@@ -66,7 +66,7 @@ class _CameraPreviewPageState extends State<_CameraPreviewPage> {
       final dir  = await getTemporaryDirectory();
       final dest = p.join(dir.path,
           'iqa_${widget.label.replaceAll(' ', '_')}_'
-          '${DateTime.now().millisecondsSinceEpoch}.jpg');
+              '${DateTime.now().millisecondsSinceEpoch}.jpg');
       await File(raw.path).copy(dest);
       if (mounted) Navigator.of(context).pop(File(dest));
     } catch (e) {
@@ -220,14 +220,14 @@ class _IqaTestPageState extends State<IqaTestPage>
       final all = await availableCameras();
       setState(() {
         _rearCam  = all.firstWhere(
-            (c) => c.lensDirection == CameraLensDirection.back,
+                (c) => c.lensDirection == CameraLensDirection.back,
             orElse: () => all.first);
         _frontCam = all.firstWhere(
-            (c) => c.lensDirection == CameraLensDirection.front,
+                (c) => c.lensDirection == CameraLensDirection.front,
             orElse: () => all.last);
         _camsLoading = false;
       });
-      widget.onProgressUpdate('Cameras detected. Capture images.', 0.10);
+      widget.onProgressUpdate('Ready — tap a camera to take a photo.', 0.10);
     } catch (e) {
       setState(() { _camError = e.toString(); _camsLoading = false; });
     }
@@ -252,7 +252,9 @@ class _IqaTestPageState extends State<IqaTestPage>
       });
       final captured = (_rearImage != null ? 1 : 0) +
           (_frontImage != null ? 1 : 0);
-      widget.onProgressUpdate('$captured image(s) captured. Tap Analyse.', 0.20);
+      widget.onProgressUpdate(
+          '${captured == 1 ? "Photo captured" : "Photos captured"} — tap Check when ready.',
+          0.20);
     }
   }
 
@@ -260,7 +262,7 @@ class _IqaTestPageState extends State<IqaTestPage>
 
   Future<void> _analyseImages() async {
     setState(() { _isAnalysing = true; _errorMsg = null; _results = []; });
-    widget.onProgressUpdate('Uploading images for analysis…', 0.50);
+    widget.onProgressUpdate('Sending photos for analysis…', 0.50);
 
     try {
       final entries = <MapEntry<String, File>>[];
@@ -279,18 +281,18 @@ class _IqaTestPageState extends State<IqaTestPage>
         req.fields['labels'] = e.key;
       }
 
-      widget.onProgressUpdate('Waiting for IQA scores…', 0.75);
+      widget.onProgressUpdate('Analysing your photos…', 0.75);
       final streamed =
-          await req.send().timeout(const Duration(minutes: 2));
+      await req.send().timeout(const Duration(minutes: 2));
       final body = await streamed.stream.bytesToString();
 
       if (streamed.statusCode != 200) {
-        throw Exception('IQA server error (${streamed.statusCode}): $body');
+        throw Exception('Server error (${streamed.statusCode}): $body');
       }
 
       final data    = jsonDecode(body) as Map<String, dynamic>;
       final results = (data['results'] as List?)
-              ?.cast<Map<String, dynamic>>() ??
+          ?.cast<Map<String, dynamic>>() ??
           [];
 
       // Attach label + icon for display
@@ -305,9 +307,8 @@ class _IqaTestPageState extends State<IqaTestPage>
       }
 
       setState(() { _results = results; _isAnalysing = false; });
-      widget.onProgressUpdate('IQA complete', 1.0);
+      widget.onProgressUpdate('Camera test complete', 1.0);
 
-      await Future.delayed(const Duration(seconds: 2));
       _finishWithSuccess(results);
     } catch (e) {
       _finishWithError(e.toString());
@@ -321,8 +322,8 @@ class _IqaTestPageState extends State<IqaTestPage>
     final nScore = math.max(0.0, (1 - niqe   /  15)) * 100;
     final pScore = math.max(0.0, (1 - piqe   / 100)) * 100;
     return (math.pow(bScore, 0.20) *
-            math.pow(nScore, 0.45) *
-            math.pow(pScore, 0.35))
+        math.pow(nScore, 0.45) *
+        math.pow(pScore, 0.35))
         .toDouble();
   }
 
@@ -337,9 +338,9 @@ class _IqaTestPageState extends State<IqaTestPage>
       final b     = (r['brisque'] as num?)?.toDouble() ?? 0;
       final n     = (r['niqe']    as num?)?.toDouble() ?? 0;
       final piqe  = (r['piqe']    as num?)?.toDouble() ?? 0;
-      scores['$label BRISQUE'] = b.toStringAsFixed(2);
-      scores['$label NIQE']    = n.toStringAsFixed(2);
-      scores['$label PIQE']    = piqe.toStringAsFixed(2);
+      scores['$label Sharpness']   = b.toStringAsFixed(2);
+      scores['$label Naturalness'] = n.toStringAsFixed(2);
+      scores['$label Clarity']     = piqe.toStringAsFixed(2);
       scores['$label Score']   =
           _computeCDI(brisque: b, niqe: n, piqe: piqe).toStringAsFixed(1);
     }
@@ -397,12 +398,12 @@ class _IqaTestPageState extends State<IqaTestPage>
                   const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('IQA Test',
+                      Text('Camera Quality Test',
                           style: TextStyle(
                               color: AppTheme.textPri,
                               fontSize: 20,
                               fontWeight: FontWeight.w800)),
-                      Text('Image quality assessment',
+                      Text('Checking how sharp your camera photos are',
                           style: TextStyle(
                               color: AppTheme.textSec, fontSize: 12)),
                     ],
@@ -421,116 +422,101 @@ class _IqaTestPageState extends State<IqaTestPage>
                     onRetry: _detectCameras,
                   )
                 else ...[
-                  // ── Capture cards ──────────────────────────────────────
-                  const Text('Capture Images',
-                      style: TextStyle(
-                          color: AppTheme.textPri,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 12),
+                    // ── Capture cards ──────────────────────────────────────
+                    const Text('Capture Images',
+                        style: TextStyle(
+                            color: AppTheme.textPri,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 12),
 
-                  Row(children: [
-                    if (_rearCam != null)
-                      Expanded(
-                        child: _CameraCard(
-                          label: 'Rear Camera',
-                          icon: Icons.camera_rear,
-                          image: _rearImage,
-                          color: AppTheme.iqaColor,
-                          onTap: () => _openCamera(_rearCam!, 'Rear Camera'),
+                    Row(children: [
+                      if (_rearCam != null)
+                        Expanded(
+                          child: _CameraCard(
+                            label: 'Rear Camera',
+                            icon: Icons.camera_rear,
+                            image: _rearImage,
+                            color: AppTheme.iqaColor,
+                            onTap: () => _openCamera(_rearCam!, 'Rear Camera'),
+                          ),
                         ),
-                      ),
-                    if (_rearCam != null && _frontCam != null)
-                      const SizedBox(width: 12),
-                    if (_frontCam != null)
-                      Expanded(
-                        child: _CameraCard(
-                          label: 'Front Camera',
-                          icon: Icons.camera_front,
-                          image: _frontImage,
-                          color: AppTheme.iqaColor,
-                          onTap: () =>
-                              _openCamera(_frontCam!, 'Front Camera'),
+                      if (_rearCam != null && _frontCam != null)
+                        const SizedBox(width: 12),
+                      if (_frontCam != null)
+                        Expanded(
+                          child: _CameraCard(
+                            label: 'Front Camera',
+                            icon: Icons.camera_front,
+                            image: _frontImage,
+                            color: AppTheme.iqaColor,
+                            onTap: () =>
+                                _openCamera(_frontCam!, 'Front Camera'),
+                          ),
                         ),
-                      ),
-                  ]),
+                    ]),
 
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-                  // ── Analyse button ─────────────────────────────────────
-                  GestureDetector(
-                    onTap: (_readyToAnalyse && !_isAnalysing)
-                        ? _analyseImages
-                        : null,
-                    child: AnimatedOpacity(
-                      opacity:
-                          (_readyToAnalyse && !_isAnalysing) ? 1.0 : 0.35,
-                      duration: const Duration(milliseconds: 200),
-                      child: Container(
-                        width: double.infinity,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: AppTheme.iqaColor,
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.iqaColor.withOpacity(0.3),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (_isAnalysing)
-                              const SizedBox(
-                                width: 18, height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.black),
-                              )
-                            else
-                              const Icon(Icons.analytics_outlined,
-                                  color: Colors.black, size: 20),
-                            const SizedBox(width: 10),
-                            Text(
-                              _isAnalysing
-                                  ? 'Analysing…'
-                                  : 'Analyse Images',
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                                letterSpacing: 0.5,
+                    // ── Analyse button ─────────────────────────────────────
+                    GestureDetector(
+                      onTap: (_readyToAnalyse && !_isAnalysing)
+                          ? _analyseImages
+                          : null,
+                      child: AnimatedOpacity(
+                        opacity:
+                        (_readyToAnalyse && !_isAnalysing) ? 1.0 : 0.35,
+                        duration: const Duration(milliseconds: 200),
+                        child: Container(
+                          width: double.infinity,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: AppTheme.iqaColor,
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.iqaColor.withOpacity(0.3),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_isAnalysing)
+                                const SizedBox(
+                                  width: 18, height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.black),
+                                )
+                              else
+                                const Icon(Icons.analytics_outlined,
+                                    color: Colors.black, size: 20),
+                              const SizedBox(width: 10),
+                              Text(
+                                _isAnalysing
+                                    ? 'Checking…'
+                                    : 'Check My Photos',
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
 
                 // ── Error ──────────────────────────────────────────────
                 if (_errorMsg != null) ...[
                   const SizedBox(height: 16),
                   _ErrorBox(message: _errorMsg!),
-                ],
-
-                // ── Results ────────────────────────────────────────────
-                if (_results.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  const Text('Results',
-                      style: TextStyle(
-                          color: AppTheme.textPri,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 12),
-                  ..._results.map((r) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _IqaResultCard(result: r),
-                  )),
                 ],
               ],
             ),
@@ -577,38 +563,38 @@ class _CameraCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: image != null
             ? Stack(fit: StackFit.expand, children: [
-                Image.file(image!, fit: BoxFit.cover),
-                Positioned(
-                  bottom: 0, left: 0, right: 0,
-                  child: Container(
-                    color: Colors.black54,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 6, horizontal: 8),
-                    child: Text(label,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                ),
-              ])
+          Image.file(image!, fit: BoxFit.cover),
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            child: Container(
+              color: Colors.black54,
+              padding: const EdgeInsets.symmetric(
+                  vertical: 6, horizontal: 8),
+              child: Text(label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ])
             : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, color: color, size: 32),
-                  const SizedBox(height: 8),
-                  Text(label,
-                      style: TextStyle(
-                          color: color,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  Text('Tap to capture',
-                      style: const TextStyle(
-                          color: AppTheme.textDim, fontSize: 11)),
-                ],
-              ),
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 32),
+            const SizedBox(height: 8),
+            Text(label,
+                style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text('Tap to capture',
+                style: const TextStyle(
+                    color: AppTheme.textDim, fontSize: 11)),
+          ],
+        ),
       ),
     );
   }
@@ -625,8 +611,8 @@ class _IqaResultCard extends StatelessWidget {
     final nScore = math.max(0.0, (1 - n /  15)) * 100;
     final pScore = math.max(0.0, (1 - piqe / 100)) * 100;
     return (math.pow(bScore, 0.20) *
-            math.pow(nScore, 0.45) *
-            math.pow(pScore, 0.35))
+        math.pow(nScore, 0.45) *
+        math.pow(pScore, 0.35))
         .toDouble();
   }
 
@@ -686,16 +672,16 @@ class _IqaResultCard extends StatelessWidget {
           // Metrics row
           Row(children: [
             Expanded(child: _Metric(
-                label: 'BRISQUE', value: b,
-                hint: '0–100', color: AppTheme.iqaColor)),
+                label: 'Sharpness', value: b,
+                hint: 'lower = better', color: AppTheme.iqaColor)),
             const SizedBox(width: 8),
             Expanded(child: _Metric(
-                label: 'NIQE', value: n,
-                hint: '0–15', color: AppTheme.iqaColor)),
+                label: 'Naturalness', value: n,
+                hint: 'lower = better', color: AppTheme.iqaColor)),
             const SizedBox(width: 8),
             Expanded(child: _Metric(
-                label: 'PIQE', value: piqe,
-                hint: '0–100', color: AppTheme.iqaColor)),
+                label: 'Clarity', value: piqe,
+                hint: 'lower = better', color: AppTheme.iqaColor)),
           ]),
         ],
       ),

@@ -5,7 +5,7 @@ import '../runner/test_model.dart';
 
 class ResultsScreen extends StatefulWidget {
   final List<TestResult> results;
-  final VoidCallback     onRunAgain;
+  final VoidCallback onRunAgain;
 
   const ResultsScreen({
     super.key,
@@ -20,7 +20,7 @@ class ResultsScreen extends StatefulWidget {
 class _ResultsScreenState extends State<ResultsScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _fadeCtrl;
-  late Animation<double>   _fade;
+  late Animation<double> _fade;
 
   @override
   void initState() {
@@ -38,23 +38,32 @@ class _ResultsScreenState extends State<ResultsScreen>
   }
 
   static const _testColors = {
-    TestId.vmaf:    AppTheme.vmafColor,
-    TestId.peaq:    AppTheme.peaqColor,
-    TestId.pesq:    AppTheme.pesqColor,
-    TestId.iqa:     AppTheme.iqaColor,
+    TestId.vmaf: AppTheme.vmafColor,
+    TestId.peaq: AppTheme.peaqColor,
+    TestId.pesq: AppTheme.pesqColor,
+    TestId.iqa: AppTheme.iqaColor,
     TestId.battery: AppTheme.battColor,
   };
 
   static const _testIcons = {
-    TestId.vmaf:    Icons.videocam_outlined,
-    TestId.peaq:    Icons.music_note_outlined,
-    TestId.pesq:    Icons.record_voice_over_outlined,
-    TestId.iqa:     Icons.image_outlined,
+    TestId.vmaf: Icons.videocam_outlined,
+    TestId.peaq: Icons.music_note_outlined,
+    TestId.pesq: Icons.record_voice_over_outlined,
+    TestId.iqa: Icons.image_outlined,
     TestId.battery: Icons.battery_charging_full_outlined,
+  };
+
+  static const _testNames = {
+    TestId.vmaf: 'Video Experience',
+    TestId.peaq: 'Audio Quality',
+    TestId.pesq: 'Voice Clarity',
+    TestId.iqa: 'Camera Quality',
+    TestId.battery: 'Battery Health',
   };
 
   int get _passCount =>
       widget.results.where((r) => r.status == TestStatus.done).length;
+
   int get _failCount =>
       widget.results.where((r) => r.status == TestStatus.failed).length;
 
@@ -67,7 +76,7 @@ class _ResultsScreenState extends State<ResultsScreen>
         child: SafeArea(
           child: Column(
             children: [
-              // ── Header ───────────────────────────────────────────────────
+              // Header
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
                 child: Column(
@@ -111,7 +120,8 @@ class _ResultsScreenState extends State<ResultsScreen>
                       ],
                     ),
                     const SizedBox(height: 20),
-                    // Summary row
+
+                    // Summary
                     Row(
                       children: [
                         _SummaryChip(
@@ -144,7 +154,7 @@ class _ResultsScreenState extends State<ResultsScreen>
 
               const SizedBox(height: 20),
 
-              // ── Result cards ──────────────────────────────────────────────
+              // Results list
               Expanded(
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -152,50 +162,49 @@ class _ResultsScreenState extends State<ResultsScreen>
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (_, i) {
                     final r = widget.results[i];
-                    if (r.status == TestStatus.skipped) return const SizedBox.shrink();
-                    final def   = allTests.firstWhere((t) => t.id == r.id);
-                    final color = _testColors[r.id]!;
-                    final icon  = _testIcons[r.id]!;
-                    return _ResultCard(result: r, definition: def, color: color, icon: icon);
+                    if (r.status == TestStatus.skipped) {
+                      return const SizedBox.shrink();
+                    }
+
+                    return _ResultCard(
+                      result: r,
+                      name: _testNames[r.id]!,
+                      color: _testColors[r.id]!,
+                      icon: _testIcons[r.id]!,
+                    );
                   },
                 ),
               ),
 
-              // ── Run again ─────────────────────────────────────────────────
+              // Run again
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: widget.onRunAgain,
-                        child: Container(
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: AppTheme.border),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.replay_rounded,
-                                  color: AppTheme.textSec, size: 20),
-                              SizedBox(width: 8),
-                              Text(
-                                'Run Again',
-                                style: TextStyle(
-                                  color: AppTheme.textSec,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ],
+                child: GestureDetector(
+                  onTap: widget.onRunAgain,
+                  child: Container(
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.replay_rounded,
+                            color: AppTheme.textSec, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Run Again',
+                          style: TextStyle(
+                            color: AppTheme.textSec,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -206,13 +215,13 @@ class _ResultsScreenState extends State<ResultsScreen>
   }
 }
 
-// ── Sub-widgets ───────────────────────────────────────────────────────────────
-
+// Summary chip (unchanged)
 class _SummaryChip extends StatelessWidget {
-  final int    count;
+  final int count;
   final String label;
-  final Color  color;
+  final Color color;
   final IconData icon;
+
   const _SummaryChip({
     required this.count,
     required this.label,
@@ -242,15 +251,16 @@ class _SummaryChip extends StatelessWidget {
   }
 }
 
+// Updated Result Card (NO subtitle)
 class _ResultCard extends StatelessWidget {
-  final TestResult     result;
-  final TestDefinition definition;
-  final Color          color;
-  final IconData       icon;
+  final TestResult result;
+  final String name;
+  final Color color;
+  final IconData icon;
 
   const _ResultCard({
     required this.result,
-    required this.definition,
+    required this.name,
     required this.color,
     required this.icon,
   });
@@ -271,7 +281,6 @@ class _ResultCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row
           Row(
             children: [
               Container(
@@ -285,25 +294,13 @@ class _ResultCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      definition.title,
-                      style: const TextStyle(
-                        color: AppTheme.textPri,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      definition.subtitle,
-                      style: const TextStyle(
-                        color: AppTheme.textDim,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    color: AppTheme.textPri,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               Icon(
@@ -343,7 +340,6 @@ class _ResultCard extends StatelessWidget {
                             color: color,
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                       ],
@@ -368,13 +364,11 @@ class _ResultCard extends StatelessWidget {
                 style: const TextStyle(
                   color: AppTheme.bad,
                   fontSize: 12,
-                  height: 1.5,
                 ),
               ),
             ),
           ],
 
-          // Timestamp
           if (result.completedAt != null) ...[
             const SizedBox(height: 10),
             Text(

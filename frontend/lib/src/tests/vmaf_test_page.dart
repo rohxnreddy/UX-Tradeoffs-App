@@ -1,13 +1,12 @@
 // lib/src/tests/vmaf_test_page.dart
 //
-// Full-screen VMAF test page.
-// • Enters landscape immersive mode for recording.
-// • Plays the reference video while recording the screen.
-// • Uploads the recorded file to POST /vmaf/score.
-// • Pops with a TestResult when complete (or on error).
-//
-// The user cannot navigate back mid-test; the back button is hidden while
-// recording is in progress to avoid corrupted recordings.
+// Flow:
+//   1. Page opens → video loads → recording starts automatically.
+//   2. OS screen-recording / share-sheet prompt fires with no user tap needed.
+//   3. Video plays while screen is recorded.
+//   4. Recording stops → page POPS IMMEDIATELY back to RunningScreen.
+//   5. Upload runs in the background.  When done, [onResultReady] is called
+//      so RunningScreen can patch the placeholder result before Results appear.
 
 import 'dart:async';
 import 'dart:convert';
@@ -24,34 +23,41 @@ import '../core/theme.dart';
 import '../runner/test_model.dart';
 
 class VmafTestPage extends StatefulWidget {
-  /// Called whenever progress changes so RunningScreen can reflect it.
+  /// Live progress shown on the RunningScreen tile while this page is on top.
   final void Function(String message, double fraction) onProgressUpdate;
 
-  const VmafTestPage({super.key, required this.onProgressUpdate});
+  /// Called from the background once the upload finishes (success or failure).
+  /// RunningScreen patches its result list with this so Results shows the score.
+  final void Function(TestResult result) onResultReady;
+
+  const VmafTestPage({
+    super.key,
+    required this.onProgressUpdate,
+    required this.onResultReady,
+  });
 
   @override
   State<VmafTestPage> createState() => _VmafTestPageState();
 }
 
+// idle    → player loading
+// recording → recording + playing
+// done    → popped
+enum _VmafState { idle, recording, done }
+
 class _VmafTestPageState extends State<VmafTestPage>
     with TickerProviderStateMixin {
-  // ── Video player ──────────────────────────────────────────────────────────
+
   late VideoPlayerController _player;
   bool _playerReady  = false;
   bool _videoVisible = false;
   bool _isFullscreen = false;
 
-  // ── State ─────────────────────────────────────────────────────────────────
-  bool    _isProcessing = false;
-  bool    _autoStarted  = false;
-  String  _statusMsg    = 'Initialising…';
-  String? _errorMsg;
-  double? _vmafScore;
-  String? _recordedPath;
+  _VmafState _state     = _VmafState.idle;
+  String     _statusMsg = 'Getting ready…';
+  String?    _errorMsg;
 
   late AnimationController _pulseCtrl;
-  late AnimationController _scoreCtrl;
-  late Animation<double>   _scoreAnim;
 
   static const _recordingWarmup   = Duration(milliseconds: 2500);
   static const _orientationSettle = Duration(milliseconds: 1200);
@@ -66,24 +72,12 @@ class _VmafTestPageState extends State<VmafTestPage>
     _pulseCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
-    _scoreCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900));
-    _scoreAnim =
-        CurvedAnimation(parent: _scoreCtrl, curve: Curves.easeOutExpo);
-
-    _initPlayer().then((_) {
-      // Auto-start once the player is ready.
-      if (mounted && !_autoStarted) {
-        _autoStarted = true;
-        _runTest();
-      }
-    });
+    _initPlayer();
   }
 
   @override
   void dispose() {
     _pulseCtrl.dispose();
-    _scoreCtrl.dispose();
     _player.dispose();
     _restoreOrientation();
     super.dispose();
@@ -92,15 +86,29 @@ class _VmafTestPageState extends State<VmafTestPage>
   // ── Player ────────────────────────────────────────────────────────────────
 
   Future<void> _initPlayer() async {
-    _player =
-        VideoPlayerController.asset('assets/video/reference.mp4');
+    _player = VideoPlayerController.asset('assets/video/reference.mp4');
     try {
       await _player.initialize();
-      if (mounted) setState(() => _playerReady = true);
+      if (mounted) {
+        setState(() {
+          _playerReady = true;
+          _statusMsg   = 'Starting recording…';
+        });
+        // Auto-start immediately — no user tap required.
+        _startRecording();
+      }
     } catch (e) {
       if (mounted) {
-        setState(() => _statusMsg = 'Failed to load reference video: $e');
+        setState(() =>
+        _statusMsg = 'Could not load the video clip. Please try again.');
       }
+      widget.onProgressUpdate('Video test failed', 1.0);
+      widget.onResultReady(TestResult(
+        id:           TestId.vmaf,
+        status:       TestStatus.failed,
+        errorMessage: 'Video failed to load: $e',
+        completedAt:  DateTime.now(),
+      ));
     }
   }
 
@@ -114,7 +122,6 @@ class _VmafTestPageState extends State<VmafTestPage>
     await SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.immersiveSticky, overlays: []);
     await Future.delayed(const Duration(milliseconds: 600));
-    // Re-apply to ensure the immersive flag survived orientation change.
     await SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.immersiveSticky, overlays: []);
     setState(() {
@@ -142,10 +149,9 @@ class _VmafTestPageState extends State<VmafTestPage>
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
-  // ── Wait for file to stop growing ─────────────────────────────────────────
+  // ── File-stable wait ──────────────────────────────────────────────────────
 
   Future<void> _waitFileStable(String path) async {
-    _update('Finalizing recording…', 0.70);
     final file = File(path);
     int prev = -1, stable = 0;
     while (stable < 2) {
@@ -156,36 +162,46 @@ class _VmafTestPageState extends State<VmafTestPage>
     await Future.delayed(const Duration(milliseconds: 500));
   }
 
-  // ── Main test flow ────────────────────────────────────────────────────────
+  // ── Automated recording flow ──────────────────────────────────────────────
 
-  Future<void> _runTest() async {
-    if (!_playerReady) {
-      _finishWithError('Video player not ready.');
-      return;
-    }
+  Future<void> _startRecording() async {
+    if (!_playerReady || _state != _VmafState.idle) return;
+
     setState(() {
-      _isProcessing = true;
-      _vmafScore    = null;
-      _errorMsg     = null;
-      _recordedPath = null;
+      _state     = _VmafState.recording;
+      _statusMsg = 'Starting recording…';
+      _errorMsg  = null;
     });
-    _scoreCtrl.reset();
 
     try {
-      _update('Entering fullscreen…', 0.05);
       await _enterFullscreen();
 
-      _update('Starting screen recorder…', 0.10);
+      // Triggers the OS share / screen-recording permission sheet.
       final started =
-          await FlutterScreenRecording.startRecordScreen('vmaf_test');
-      if (!started) throw Exception('Screen recording permission denied.');
+      await FlutterScreenRecording.startRecordScreen('vmaf_test');
 
-      _update('Warming up recorder…', 0.15);
+      if (!started) {
+        // Permission denied — report failure and pop back automatically.
+        await _exitFullscreen();
+        widget.onProgressUpdate('Video test failed', 1.0);
+        widget.onResultReady(TestResult(
+          id:           TestId.vmaf,
+          status:       TestStatus.failed,
+          errorMessage: 'Screen recording permission was not granted.',
+          completedAt:  DateTime.now(),
+        ));
+        _popWithPlaceholder(failed: true);
+        return;
+      }
+
+      widget.onProgressUpdate('Recording screen…', 0.20);
+
+      // Warmup — give the recorder a moment before video starts.
       await Future.delayed(_recordingWarmup);
 
+      // Play the video.
       await _player.seekTo(Duration.zero);
-      if (mounted) setState(() { _statusMsg = 'Playing reference video…'; _videoVisible = true; });
-      _update('Playing reference video…', 0.20);
+      if (mounted) setState(() => _videoVisible = true);
       await _player.play();
 
       final dur = _player.value.duration;
@@ -193,108 +209,109 @@ class _VmafTestPageState extends State<VmafTestPage>
       await _player.pause();
       await Future.delayed(const Duration(milliseconds: 200));
 
-      _update('Stopping recorder…', 0.60);
+      widget.onProgressUpdate('Finishing up…', 0.60);
       final path = await FlutterScreenRecording.stopRecordScreen;
       if (path.isEmpty) throw Exception('Recording returned empty path.');
 
-      _recordedPath = path;
       await _exitFullscreen();
       await _waitFileStable(path);
 
       final fileSize = await File(path).length();
       if (fileSize < 1024) {
-        throw Exception('Recording too small (${fileSize}B). Try again.');
+        throw Exception('Recording was too short or empty.');
       }
 
-      _update(
-          'Uploading ${(fileSize / 1024 / 1024).toStringAsFixed(1)} MB…',
-          0.80);
-      await _uploadAndScore(path);
+      // ── Pop immediately — upload runs in background ───────────────────────
+      widget.onProgressUpdate('Sending in background…', 0.70);
+      _popWithPlaceholder();
+
+      // Don't await — this outlives the page.
+      _uploadInBackground(path); // ignore: unawaited_futures
 
     } catch (e, st) {
       debugPrint('VMAF error: $e\n$st');
       await _exitFullscreen();
-      _finishWithError(e.toString());
+      widget.onProgressUpdate('Video test failed', 1.0);
+      widget.onResultReady(TestResult(
+        id:           TestId.vmaf,
+        status:       TestStatus.failed,
+        errorMessage: e.toString(),
+        completedAt:  DateTime.now(),
+      ));
+      _popWithPlaceholder(failed: true);
     }
   }
 
-  // ── Upload ────────────────────────────────────────────────────────────────
+  // ── Pop with a placeholder that RunningScreen holds until upload finishes ──
 
-  Future<void> _uploadAndScore(String path) async {
-    final request =
-        http.MultipartRequest('POST', Uri.parse('$_apiBase/vmaf/score'));
-    request.files.add(await http.MultipartFile.fromPath(
-      'distorted_video', path,
-      filename: 'distorted_video.mp4',
-    ));
-
-    final streamed = await request.send().timeout(
-      const Duration(minutes: 10),
-      onTimeout: () => throw Exception('Upload timed out.'),
-    );
-    final body = await streamed.stream.bytesToString();
-
-    if (streamed.statusCode != 200) {
-      throw Exception('API ${streamed.statusCode}: $body');
-    }
-
-    final data = jsonDecode(body) as Map<String, dynamic>;
-    if (!data.containsKey('vmaf_score')) {
-      throw Exception("Response missing 'vmaf_score'.");
-    }
-
-    final score = (data['vmaf_score'] as num).toDouble();
-    if (mounted) {
-      setState(() => _vmafScore = score);
-      _scoreCtrl.forward();
-    }
-
-    _update('VMAF complete', 1.0);
-
-    // Short pause so the user can see the score before we pop.
-    await Future.delayed(const Duration(seconds: 2));
-
-    _finishWithSuccess({'VMAF Score': score.toStringAsFixed(2)});
-  }
-
-  // ── Navigation helpers ────────────────────────────────────────────────────
-
-  void _update(String msg, double frac) {
-    widget.onProgressUpdate(msg, frac);
-    if (mounted) setState(() => _statusMsg = msg);
-  }
-
-  void _finishWithSuccess(Map<String, dynamic> scores) {
+  void _popWithPlaceholder({bool failed = false}) {
     if (!mounted) return;
-    Navigator.of(context).pop(TestResult(
-      id:          TestId.vmaf,
-      status:      TestStatus.done,
-      scores:      scores,
-      completedAt: DateTime.now(),
-    ));
+    setState(() => _state = _VmafState.done);
+    Navigator.of(context).pop(
+      failed
+          ? TestResult(
+        id:     TestId.vmaf,
+        status: TestStatus.failed,
+        scores: const {'Status': 'Failed'},
+      )
+          : TestResult(
+        id:     TestId.vmaf,
+        status: TestStatus.running, // RunningScreen treats this as "pending"
+        scores: const {'Status': 'Uploading in background…'},
+      ),
+    );
   }
 
-  void _finishWithError(String msg) {
-    if (mounted) setState(() { _isProcessing = false; _errorMsg = msg; });
-    widget.onProgressUpdate('Failed: $msg', 1.0);
-    // Give user a moment to read the error, then pop with failure.
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.of(context).pop(TestResult(
-          id:           TestId.vmaf,
-          status:       TestStatus.failed,
-          errorMessage: msg,
-          completedAt:  DateTime.now(),
-        ));
+  // ── Background upload ─────────────────────────────────────────────────────
+
+  Future<void> _uploadInBackground(String path) async {
+    try {
+      final request =
+      http.MultipartRequest('POST', Uri.parse('$_apiBase/vmaf/score'));
+      request.files.add(await http.MultipartFile.fromPath(
+        'distorted_video', path,
+        filename: 'distorted_video.mp4',
+      ));
+
+      final streamed = await request.send().timeout(
+        const Duration(minutes: 10),
+        onTimeout: () => throw Exception('Upload timed out.'),
+      );
+      final body = await streamed.stream.bytesToString();
+
+      if (streamed.statusCode != 200) {
+        throw Exception('Server error (${streamed.statusCode}): $body');
       }
-    });
+
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      if (!data.containsKey('vmaf_score')) {
+        throw Exception('Unexpected response from server.');
+      }
+
+      final score = (data['vmaf_score'] as num).toDouble();
+      widget.onProgressUpdate('Video test complete', 1.0);
+      widget.onResultReady(TestResult(
+        id:          TestId.vmaf,
+        status:      TestStatus.done,
+        scores:      {'Video Quality Score': score.toStringAsFixed(2)},
+        completedAt: DateTime.now(),
+      ));
+    } catch (e) {
+      widget.onProgressUpdate('Video test failed', 1.0);
+      widget.onResultReady(TestResult(
+        id:           TestId.vmaf,
+        status:       TestStatus.failed,
+        errorMessage: e.toString(),
+        completedAt:  DateTime.now(),
+      ));
+    }
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    // Fullscreen recording overlay — pure black with the video.
+    // Full-screen recording overlay.
     if (_isFullscreen) {
       return Scaffold(
         backgroundColor: Colors.black,
@@ -306,7 +323,6 @@ class _VmafTestPageState extends State<VmafTestPage>
                 child: VideoPlayer(_player),
               ),
             ),
-          // Cover with black until we actually want the video visible.
           if (!_videoVisible)
             const Positioned.fill(child: ColoredBox(color: Colors.black)),
         ]),
@@ -314,8 +330,7 @@ class _VmafTestPageState extends State<VmafTestPage>
     }
 
     return PopScope(
-      // Prevent back during active test to avoid corrupt recordings.
-      canPop: !_isProcessing,
+      canPop: _state != _VmafState.recording,
       child: Scaffold(
         backgroundColor: AppTheme.bg,
         body: SafeArea(
@@ -325,7 +340,7 @@ class _VmafTestPageState extends State<VmafTestPage>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // ── Header ──────────────────────────────────────────────
+                  // ── Icon ───────────────────────────────────────────────
                   Container(
                     width: 56,
                     height: 56,
@@ -339,55 +354,61 @@ class _VmafTestPageState extends State<VmafTestPage>
                         color: AppTheme.vmafColor, size: 28),
                   ),
                   const SizedBox(height: 16),
-                  const Text('VMAF Test',
+                  const Text('Video Test',
                       style: TextStyle(
                           color: AppTheme.textPri,
                           fontSize: 22,
                           fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
-                  const Text('Video quality assessment',
+                  const Text('Checking your screen quality',
                       style: TextStyle(
                           color: AppTheme.textSec, fontSize: 13)),
                   const SizedBox(height: 36),
 
-                  // ── Score or pulse ───────────────────────────────────────
-                  if (_vmafScore != null)
-                    _ScoreDisplay(
-                      score: _vmafScore!,
-                      scoreAnim: _scoreAnim,
-                      color: AppTheme.vmafColor,
-                    )
-                  else
-                    AnimatedBuilder(
-                      animation: _pulseCtrl,
-                      builder: (_, __) => Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.surface,
-                          border: Border.all(
-                            color: AppTheme.vmafColor.withOpacity(
-                                0.3 + 0.7 * _pulseCtrl.value),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.vmafColor.withOpacity(
-                                  0.08 + 0.12 * _pulseCtrl.value),
-                              blurRadius: 32,
-                              spreadRadius: 4,
-                            ),
-                          ],
+                  // ── Pulse / record ring ────────────────────────────────
+                  AnimatedBuilder(
+                    animation: _pulseCtrl,
+                    builder: (_, __) => Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppTheme.surface,
+                        border: Border.all(
+                          color: _state == _VmafState.recording
+                              ? AppTheme.bad.withOpacity(
+                              0.4 + 0.6 * _pulseCtrl.value)
+                              : AppTheme.vmafColor.withOpacity(0.25),
+                          width: 1.5,
                         ),
-                        child: const Icon(Icons.fullscreen_rounded,
-                            color: AppTheme.vmafColor, size: 44),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_state == _VmafState.recording
+                                ? AppTheme.bad
+                                : AppTheme.vmafColor)
+                                .withOpacity(_state == _VmafState.recording
+                                ? 0.10 + 0.15 * _pulseCtrl.value
+                                : 0.05),
+                            blurRadius: 32,
+                            spreadRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        _state == _VmafState.recording
+                            ? Icons.fiber_manual_record
+                            : Icons.hourglass_top_rounded,
+                        color: _state == _VmafState.recording
+                            ? AppTheme.bad
+                            : AppTheme.vmafColor,
+                        size: 40,
                       ),
                     ),
+                  ),
 
                   const SizedBox(height: 32),
 
-                  // ── Status / error ──────────────────────────────────────
+                  // ── Status / error ─────────────────────────────────────
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
                     child: Text(
@@ -404,92 +425,11 @@ class _VmafTestPageState extends State<VmafTestPage>
                     ),
                   ),
 
-                  if (_isProcessing) ...[
-                    const SizedBox(height: 20),
-                    LinearProgressIndicator(
-                      backgroundColor: AppTheme.border,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                          AppTheme.vmafColor),
-                      minHeight: 2,
-                    ),
-                  ],
+
                 ],
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Score display widget ──────────────────────────────────────────────────────
-
-class _ScoreDisplay extends StatelessWidget {
-  final double             score;
-  final Animation<double>  scoreAnim;
-  final Color              color;
-
-  const _ScoreDisplay({
-    required this.score,
-    required this.scoreAnim,
-    required this.color,
-  });
-
-  Color get _scoreColor {
-    if (score >= 80) return AppTheme.good;
-    if (score >= 55) return AppTheme.warn;
-    return AppTheme.bad;
-  }
-
-  String get _label {
-    if (score >= 90) return 'EXCELLENT';
-    if (score >= 80) return 'GOOD';
-    if (score >= 60) return 'FAIR';
-    if (score >= 40) return 'POOR';
-    return 'VERY POOR';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: scoreAnim,
-      builder: (_, __) => Opacity(
-        opacity: scoreAnim.value,
-        child: Transform.translate(
-          offset: Offset(0, 20 * (1 - scoreAnim.value)),
-          child: Column(children: [
-            Text(
-              score.toStringAsFixed(2),
-              style: TextStyle(
-                color: _scoreColor,
-                fontSize: 72,
-                fontWeight: FontWeight.w800,
-                height: 1,
-                letterSpacing: -2,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(
-                color: _scoreColor.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(4),
-                border:
-                    Border.all(color: _scoreColor.withOpacity(0.25)),
-              ),
-              child: Text(
-                _label,
-                style: TextStyle(
-                  color: _scoreColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 2.5,
-                ),
-              ),
-            ),
-          ]),
         ),
       ),
     );

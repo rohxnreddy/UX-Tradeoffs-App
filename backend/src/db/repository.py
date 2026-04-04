@@ -227,6 +227,39 @@ async def insert_peaq_result(
     return row["id"]
 
 
+async def insert_pesq_result(
+    *,
+    session_id: Optional[UUID],
+    degraded_filename: Optional[str],
+    test_type: str = "upload",  # stored as call_type in pesq_results
+    result: dict,
+) -> UUID:
+    """Insert a single-score PESQ result (e.g. POST /pesq/score).
+
+    We reuse the existing pesq_results table:
+    - call_type: "upload" (or other test types)
+    - recorded_filename: the uploaded filename
+    - direct_pesq: the computed score
+    """
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        INSERT INTO pesq_results (
+            session_id, call_type, recorded_filename,
+            direct_pesq, raw_output
+        )
+        VALUES ($1,$2,$3,$4,$5::jsonb)
+        RETURNING id
+        """,
+        session_id,
+        test_type,
+        degraded_filename,
+        result.get("pesq_score"),
+        _jsonb(result),
+    )
+    return row["id"]
+
+
 # ─── 4. PESQ (Formerly WebRTC) ──────────────────────────────────────────────────
 
 async def insert_pesq_result_from_webrtc(

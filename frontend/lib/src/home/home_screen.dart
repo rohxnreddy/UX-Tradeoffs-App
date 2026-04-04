@@ -17,7 +17,7 @@ class _HomeScreenState extends State<HomeScreen>
   final Set<TestId> _selected = Set.of(TestId.values);
 
   late AnimationController _fadeCtrl;
-  late Animation<double>   _fade;
+  late Animation<double> _fade;
 
   @override
   void initState() {
@@ -35,26 +35,26 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   static const _testNames = {
-    TestId.vmaf:    'Video Experience',
-    TestId.peaq:    'Audio Quality',
-    TestId.pesq:    'Voice Clarity',
-    TestId.iqa:     'Image Quality',
+    TestId.vmaf: 'Video Experience',
+    TestId.peaq: 'Audio Quality',
+    TestId.pesq: 'Voice Clarity',
+    TestId.iqa: 'Camera Quality',
     TestId.battery: 'Battery Health',
   };
 
   static const _testColors = {
-    TestId.vmaf:    AppTheme.vmafColor,
-    TestId.peaq:    AppTheme.peaqColor,
-    TestId.pesq:    AppTheme.pesqColor,
-    TestId.iqa:     AppTheme.iqaColor,
+    TestId.vmaf: AppTheme.vmafColor,
+    TestId.peaq: AppTheme.peaqColor,
+    TestId.pesq: AppTheme.pesqColor,
+    TestId.iqa: AppTheme.iqaColor,
     TestId.battery: AppTheme.battColor,
   };
 
   static const _testIcons = {
-    TestId.vmaf:    Icons.videocam_outlined,
-    TestId.peaq:    Icons.music_note_outlined,
-    TestId.pesq:    Icons.record_voice_over_outlined,
-    TestId.iqa:     Icons.image_outlined,
+    TestId.vmaf: Icons.videocam_outlined,
+    TestId.peaq: Icons.music_note_outlined,
+    TestId.pesq: Icons.record_voice_over_outlined,
+    TestId.iqa: Icons.image_outlined,
     TestId.battery: Icons.battery_charging_full_outlined,
   };
 
@@ -65,7 +65,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   Widget build(BuildContext context) {
     final store = SessionStore.instance;
-    final name  = store.googleDisplayName ?? store.googleEmail ?? 'Tester';
+    final name = store.googleDisplayName ?? store.googleEmail ?? 'Tester';
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
@@ -130,13 +130,13 @@ class _HomeScreenState extends State<HomeScreen>
                 child: Row(
                   children: [
                     _InfoChip(
-                      icon:  Icons.timer_outlined,
+                      icon: Icons.timer_outlined,
                       label: '~${_totalEst}s total',
                       color: AppTheme.accent,
                     ),
                     const SizedBox(width: 8),
                     _InfoChip(
-                      icon:  Icons.check_box_outlined,
+                      icon: Icons.check_box_outlined,
                       label: '${_selected.length} tests selected',
                       color: AppTheme.good,
                     ),
@@ -152,19 +152,20 @@ class _HomeScreenState extends State<HomeScreen>
                   itemCount: allTests.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (_, i) {
-                    final def     = allTests[i];
-                    final color   = _testColors[def.id]!;
-                    final icon    = _testIcons[def.id]!;
+                    final def = allTests[i];
+                    final color = _testColors[def.id]!;
+                    final icon = _testIcons[def.id]!;
                     final checked = _selected.contains(def.id);
-                    final displayName = _testNames[def.id] ?? def.title;
+                    final displayName =
+                        _testNames[def.id] ?? def.title;
 
                     return _TestCard(
-                      title:      displayName,
+                      title: displayName,
                       definition: def,
-                      color:      color,
-                      icon:       icon,
-                      checked:    checked,
-                      onToggle:   () {
+                      color: color,
+                      icon: icon,
+                      checked: checked,
+                      onToggle: () {
                         setState(() {
                           if (checked) {
                             _selected.remove(def.id);
@@ -236,9 +237,11 @@ class _HomeScreenState extends State<HomeScreen>
 
 class _InfoChip extends StatelessWidget {
   final IconData icon;
-  final String   label;
-  final Color    color;
-  const _InfoChip({required this.icon, required this.label, required this.color});
+  final String label;
+  final Color color;
+
+  const _InfoChip(
+      {required this.icon, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -254,19 +257,21 @@ class _InfoChip extends StatelessWidget {
         const SizedBox(width: 6),
         Text(label,
             style: TextStyle(
-                color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w600)),
       ]),
     );
   }
 }
 
 class _TestCard extends StatelessWidget {
-  final String         title;
+  final String title;
   final TestDefinition definition;
-  final Color          color;
-  final IconData       icon;
-  final bool           checked;
-  final VoidCallback   onToggle;
+  final Color color;
+  final IconData icon;
+  final bool checked;
+  final VoidCallback onToggle;
 
   const _TestCard({
     required this.title,
@@ -306,26 +311,14 @@ class _TestCard extends StatelessWidget {
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: checked ? AppTheme.textPri : AppTheme.textSec,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    definition.subtitle,
-                    style: const TextStyle(
-                      color: AppTheme.textDim,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+              child: Text(
+                title,
+                style: TextStyle(
+                  color:
+                  checked ? AppTheme.textPri : AppTheme.textSec,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             Text(
@@ -349,7 +342,8 @@ class _TestCard extends StatelessWidget {
                 ),
               ),
               child: checked
-                  ? const Icon(Icons.check, color: Colors.black, size: 14)
+                  ? const Icon(Icons.check,
+                  color: Colors.black, size: 14)
                   : null,
             ),
           ],

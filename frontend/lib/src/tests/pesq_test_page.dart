@@ -1,13 +1,12 @@
 // lib/src/tests/pesq_test_page.dart
 //
-// PESQ test page.
-// Full guided flow:
-//   1. Download reference speech from /audio/pesq.
-//   2. Play reference through speaker while recording via mic.
-//   3. Upload recording to POST /webrtc/device-call.
-//   4. Display PESQ scores (PSTN / VoLTE / VoIP / Device), then pop.
-//
-// Back button blocked while recording.
+// PESQ test page — voice clarity via WebRTC simulator.
+// Flow:
+//   1. Record 3 s of room noise.
+//   2. Download reference speech from /audio/pesq.
+//   3. Play reference through speaker while recording.
+//   4. Upload both WAVs to POST /pesq/score.
+//   5. Pop with TestResult.
 
 import 'dart:convert';
 import 'dart:io';
@@ -42,14 +41,11 @@ class _PesqTestPageState extends State<PesqTestPage>
   bool    _autoStarted  = false;
   String  _statusMsg    = 'Initialising…';
   String? _errorMsg;
-  Map<String, dynamic>? _webrtcResult;
 
   late AnimationController _pulseCtrl;
 
   String  get _apiBase   => AppConfig.apiBaseUrl;
   String? get _sessionId => SessionStore.instance.sessionId;
-
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -71,108 +67,87 @@ class _PesqTestPageState extends State<PesqTestPage>
     super.dispose();
   }
 
-  // ── Main flow ─────────────────────────────────────────────────────────────
-
   Future<void> _runTest() async {
-    setState(() { _isProcessing = true; _errorMsg = null; _webrtcResult = null; });
+    setState(() { _isProcessing = true; _errorMsg = null; });
 
     try {
-      // 0. Permission
-      _update('Checking microphone permission…', 0.02);
+      _update('Checking microphone access…', 0.02);
       if (!await _recorder.hasPermission()) {
-        throw Exception('Microphone permission denied. Grant access in Settings.');
+        throw Exception('Microphone access is required.');
       }
 
-      final tmpDir      = await getTemporaryDirectory();
-      final recordPath  = '${tmpDir.path}/pesq_recording.wav';
+      final tmpDir       = await getTemporaryDirectory();
+      final noisePath    = '${tmpDir.path}/pesq_noise.wav';
+      final degradedPath = '${tmpDir.path}/pesq_degraded.wav';
 
-      // 1. Download reference speech
-      _update('Downloading reference speech from server…', 0.10);
-      final audioRes = await http
-          .get(Uri.parse('$_apiBase/audio/pesq'))
-          .timeout(const Duration(seconds: 30));
-      if (audioRes.statusCode != 200) {
-        throw Exception(
-            'Reference speech download failed (${audioRes.statusCode})');
-      }
-      final refPath = '${tmpDir.path}/pesq_ref.wav';
-      await File(refPath).writeAsBytes(audioRes.bodyBytes);
-
-      // 2. Record while playing
-      _update('Playing speech & recording… hold phone in call position.', 0.25);
+      _update('Listening to the room for 3 seconds…', 0.10);
       await _recorder.start(
         const RecordConfig(
-          encoder: AudioEncoder.wav,
-          sampleRate: 16000,
-          numChannels: 1,
-          echoCancel: false,
-          noiseSuppress: false,
-          autoGain: false,
-          audioInterruption: AudioInterruptionMode.none,
-          androidConfig:
-              AndroidRecordConfig(audioSource: AndroidAudioSource.camcorder),
+          encoder:            AudioEncoder.wav,
+          sampleRate:         16000,
+          numChannels:        1,
+          echoCancel:         false,
+          noiseSuppress:      false,
+          autoGain:           false,
+          androidConfig: AndroidRecordConfig(audioSource: AndroidAudioSource.mic),
         ),
-        path: recordPath,
+        path: noisePath,
+      );
+      await Future.delayed(const Duration(seconds: 3));
+      await _recorder.stop();
+
+      _update('Downloading voice sample…', 0.30);
+      final audioRes = await http.get(Uri.parse('$_apiBase/audio/pesq'));
+      if (audioRes.statusCode != 200) throw Exception('Download failed');
+      final refPath = '${tmpDir.path}/pesq_reference.wav';
+      await File(refPath).writeAsBytes(audioRes.bodyBytes);
+
+      _update('Playing voice sample — keep the phone unblocked.', 0.40);
+      await _recorder.start(
+        const RecordConfig(
+          encoder:            AudioEncoder.wav,
+          sampleRate:         16000,
+          numChannels:        1,
+          echoCancel:         false,
+          noiseSuppress:      false,
+          autoGain:           false,
+          androidConfig: AndroidRecordConfig(audioSource: AndroidAudioSource.voiceCommunication),
+        ),
+        path: degradedPath,
       );
       await Future.delayed(const Duration(milliseconds: 300));
       await SpeakerControl.enableSpeaker();
       await _refPlayer.setFilePath(refPath);
-      await _refPlayer.setVolume(1.0);
       await _refPlayer.play();
-      await _refPlayer.playerStateStream.firstWhere(
-          (s) => s.processingState == ProcessingState.completed);
+      await _refPlayer.playerStateStream.firstWhere((s) => s.processingState == ProcessingState.completed);
       await Future.delayed(const Duration(milliseconds: 500));
-      await _recorder.stop();
+      final actualPath = await _recorder.stop();
       await SpeakerControl.disableSpeaker();
 
-      // 3. Validate
-      final recFile = File(recordPath);
-      if (!await recFile.exists() || await recFile.length() == 0) {
-        throw Exception('Recording failed — no audio captured.');
-      }
+      final resolvedPath = actualPath ?? degradedPath;
+      _update('Voice captured ✓ Sending for analysis…', 0.65);
 
-      // 4. Upload to /webrtc/device-call
-      _update('Processing through WebRTC codecs (Opus, G.711, AMR-WB)…', 0.60);
-      final req = http.MultipartRequest(
-          'POST', Uri.parse('$_apiBase/webrtc/device-call'));
-      req.files.add(await http.MultipartFile.fromPath(
-        'recorded_audio', recordPath,
-        filename: 'webrtc_recording.wav',
-      ));
+      final req = http.MultipartRequest('POST', Uri.parse('$_apiBase/pesq/score'));
+      req.files.add(await http.MultipartFile.fromPath('degraded_audio', resolvedPath));
+      req.files.add(await http.MultipartFile.fromPath('room_noise', noisePath));
       if (_sessionId != null) req.headers['x-session-id'] = _sessionId!;
 
-      _update('Computing PESQ scores…', 0.80);
-      final streamed =
-          await req.send().timeout(const Duration(minutes: 2));
+      _update('Analysing voice clarity…', 0.75);
+      final streamed = await req.send().timeout(const Duration(minutes: 2));
       final body = await streamed.stream.bytesToString();
-      if (streamed.statusCode != 200) {
-        throw Exception('PESQ server error (${streamed.statusCode}): $body');
-      }
+      if (streamed.statusCode != 200) throw Exception('Server error: $body');
 
       final data = jsonDecode(body) as Map<String, dynamic>;
-      setState(() => _webrtcResult = data);
+      final mos  = (data['mos_score'] as num?)?.toDouble();
 
-      _update('PESQ complete', 1.0);
-
-      final voip   = (data['voip_wideband']?['pesq_score']          as num?)?.toDouble();
-      final trad   = (data['traditional_narrowband']?['pesq_score']  as num?)?.toDouble();
-      final volte  = (data['volte_wideband']?['pesq_score']          as num?)?.toDouble();
-      final direct = (data['direct_recording']?['pesq_score']        as num?)?.toDouble();
-
-      await Future.delayed(const Duration(seconds: 2));
-
-      _finishWithSuccess({
-        'PSTN (G.711)':   trad?.toStringAsFixed(2)   ?? 'N/A',
-        'VoIP (Opus)':    voip?.toStringAsFixed(2)   ?? 'N/A',
-        'VoLTE (AMR-WB)': volte?.toStringAsFixed(2)  ?? 'N/A',
-        'Device Score':   direct?.toStringAsFixed(2) ?? 'N/A',
-      });
+      _update('Voice test complete', 1.0);
+      _finishWithSuccess({'MOS Score': mos?.toStringAsFixed(2) ?? 'N/A'});
     } catch (e) {
+      try { await _recorder.stop(); } catch (_) {}
+      try { await SpeakerControl.disableSpeaker(); } catch (_) {}
       _finishWithError(e.toString());
     }
   }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
 
   void _update(String msg, double frac) {
     widget.onProgressUpdate(msg, frac);
@@ -204,227 +179,28 @@ class _PesqTestPageState extends State<PesqTestPage>
     });
   }
 
-  // ── PESQ score helpers ────────────────────────────────────────────────────
-
-  Color _pesqColor(double v) {
-    if (v >= 3.5) return AppTheme.good;
-    if (v >= 2.5) return AppTheme.warn;
-    return AppTheme.bad;
-  }
-
-  String _pesqLabel(double v) {
-    if (v >= 4.0) return 'EXCELLENT';
-    if (v >= 3.5) return 'GOOD';
-    if (v >= 2.5) return 'FAIR';
-    if (v >= 1.5) return 'POOR';
-    return 'VERY POOR';
-  }
-
-  // ── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-    final voip   = (_webrtcResult?['voip_wideband']?['pesq_score']          as num?)?.toDouble();
-    final trad   = (_webrtcResult?['traditional_narrowband']?['pesq_score']  as num?)?.toDouble();
-    final volte  = (_webrtcResult?['volte_wideband']?['pesq_score']          as num?)?.toDouble();
-
-    return PopScope(
-      canPop: !_isProcessing,
-      child: Scaffold(
-        backgroundColor: AppTheme.bg,
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icon
-                  Container(
-                    width: 56, height: 56,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppTheme.pesqColor.withOpacity(0.12),
-                      border: Border.all(
-                          color: AppTheme.pesqColor.withOpacity(0.3)),
-                    ),
-                    child: const Icon(Icons.record_voice_over_outlined,
-                        color: AppTheme.pesqColor, size: 28),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('PESQ Test',
-                      style: TextStyle(
-                          color: AppTheme.textPri,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 6),
-                  const Text('Speech quality via WebRTC',
-                      style: TextStyle(
-                          color: AppTheme.textSec, fontSize: 13)),
-                  const SizedBox(height: 36),
-
-                  // Score grid or pulse ring
-                  if (_webrtcResult != null)
-                    _PesqScoreGrid(
-                      trad: trad, voip: voip, volte: volte,
-                      pesqColor: _pesqColor,
-                      pesqLabel: _pesqLabel,
-                    )
-                  else
-                    AnimatedBuilder(
-                      animation: _pulseCtrl,
-                      builder: (_, __) => Container(
-                        width: 120, height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.surface,
-                          border: Border.all(
-                            color: AppTheme.pesqColor.withOpacity(
-                                0.3 + 0.7 * _pulseCtrl.value),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.pesqColor.withOpacity(
-                                  0.08 + 0.12 * _pulseCtrl.value),
-                              blurRadius: 32, spreadRadius: 4,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.phone_in_talk_outlined,
-                            color: AppTheme.pesqColor, size: 44),
-                      ),
-                    ),
-
-                  const SizedBox(height: 32),
-
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: Text(
-                      _errorMsg ?? _statusMsg,
-                      key: ValueKey(_errorMsg ?? _statusMsg),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _errorMsg != null
-                            ? AppTheme.bad
-                            : AppTheme.textSec,
-                        fontSize: 13,
-                        height: 1.6,
-                      ),
-                    ),
-                  ),
-
-                  if (_isProcessing) ...[
-                    const SizedBox(height: 20),
-                    LinearProgressIndicator(
-                      backgroundColor: AppTheme.border,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                          AppTheme.pesqColor),
-                      minHeight: 2,
-                    ),
-                  ],
-                ],
-              ),
-            ),
+    return Scaffold(
+      backgroundColor: AppTheme.bg,
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.record_voice_over_outlined, color: AppTheme.pesqColor, size: 44),
+              const SizedBox(height: 16),
+              const Text('Voice Clarity Test', style: TextStyle(color: AppTheme.textPri, fontSize: 22, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 32),
+              Text(_errorMsg ?? _statusMsg, textAlign: TextAlign.center, style: TextStyle(color: _errorMsg != null ? AppTheme.bad : AppTheme.textSec, fontSize: 13)),
+              if (_isProcessing) ...[
+                const SizedBox(height: 20),
+                const CircularProgressIndicator(color: AppTheme.pesqColor),
+              ],
+            ],
           ),
         ),
       ),
-    );
-  }
-}
-
-// ── PESQ 3-column score grid ──────────────────────────────────────────────────
-
-class _PesqScoreGrid extends StatelessWidget {
-  final double? trad;
-  final double? voip;
-  final double? volte;
-  final Color  Function(double) pesqColor;
-  final String Function(double) pesqLabel;
-
-  const _PesqScoreGrid({
-    required this.trad,
-    required this.voip,
-    required this.volte,
-    required this.pesqColor,
-    required this.pesqLabel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(children: [
-      Row(children: [
-        Expanded(child: _PesqCol(
-          label: 'PSTN', codec: 'G.711',
-          score: trad, color: const Color(0xFFE65100),
-          pesqColor: pesqColor, pesqLabel: pesqLabel,
-        )),
-        const SizedBox(width: 8),
-        Expanded(child: _PesqCol(
-          label: 'VoLTE', codec: 'AMR-WB',
-          score: volte, color: const Color(0xFF6A1B9A),
-          pesqColor: pesqColor, pesqLabel: pesqLabel,
-        )),
-        const SizedBox(width: 8),
-        Expanded(child: _PesqCol(
-          label: 'VoIP', codec: 'Opus',
-          score: voip, color: const Color(0xFF1B5E20),
-          pesqColor: pesqColor, pesqLabel: pesqLabel,
-        )),
-      ]),
-      const SizedBox(height: 10),
-      const Text(
-        'Scale: 1.0 (very poor) → 4.5 (excellent)',
-        style: TextStyle(color: AppTheme.textDim, fontSize: 11),
-        textAlign: TextAlign.center,
-      ),
-    ]);
-  }
-}
-
-class _PesqCol extends StatelessWidget {
-  final String  label;
-  final String  codec;
-  final double? score;
-  final Color   color;
-  final Color  Function(double) pesqColor;
-  final String Function(double) pesqLabel;
-
-  const _PesqCol({
-    required this.label,
-    required this.codec,
-    required this.score,
-    required this.color,
-    required this.pesqColor,
-    required this.pesqLabel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = score != null ? pesqColor(score!) : AppTheme.textDim;
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(children: [
-        Text(label, style: TextStyle(
-            color: color, fontSize: 13, fontWeight: FontWeight.w700)),
-        Text(codec, style: const TextStyle(
-            color: AppTheme.textDim, fontSize: 10)),
-        const SizedBox(height: 8),
-        Text(
-          score != null ? score!.toStringAsFixed(2) : 'N/A',
-          style: TextStyle(
-              color: c, fontSize: 26, fontWeight: FontWeight.bold),
-        ),
-        if (score != null)
-          Text(pesqLabel(score!),
-              style: TextStyle(color: c, fontSize: 9),
-              textAlign: TextAlign.center),
-      ]),
     );
   }
 }

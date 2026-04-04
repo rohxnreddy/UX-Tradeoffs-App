@@ -10,6 +10,7 @@ import asyncio
 
 from src.vmaf.vmaf import compute_vmaf
 from src.peaq.peaq import compute_peaq_odg, PEAQError
+from src.pesq.pesq import compute_pesq, PESQError
 from src.webrtc.codec_call import make_webrtc_call, make_device_webrtc_call
 from src.IMA.IMA import compute_iqa
 from src.db.schemas import DeviceMeta
