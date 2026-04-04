@@ -76,33 +76,16 @@ class _PesqTestPageState extends State<PesqTestPage>
         throw Exception('Microphone access is required.');
       }
 
-      final tmpDir       = await getTemporaryDirectory();
-      final noisePath    = '${tmpDir.path}/pesq_noise.wav';
-      final degradedPath = '${tmpDir.path}/pesq_degraded.wav';
+      final tmpDir        = await getTemporaryDirectory();
+      final recordingPath = '${tmpDir.path}/webrtc_recording.wav';
 
-      _update('Listening to the room for 3 seconds…', 0.10);
-      await _recorder.start(
-        const RecordConfig(
-          encoder:            AudioEncoder.wav,
-          sampleRate:         16000,
-          numChannels:        1,
-          echoCancel:         false,
-          noiseSuppress:      false,
-          autoGain:           false,
-          androidConfig: AndroidRecordConfig(audioSource: AndroidAudioSource.mic),
-        ),
-        path: noisePath,
-      );
-      await Future.delayed(const Duration(seconds: 3));
-      await _recorder.stop();
-
-      _update('Downloading voice sample…', 0.30);
+      _update('Downloading voice sample…', 0.10);
       final audioRes = await http.get(Uri.parse('$_apiBase/audio/pesq'));
       if (audioRes.statusCode != 200) throw Exception('Download failed');
       final refPath = '${tmpDir.path}/pesq_reference.wav';
       await File(refPath).writeAsBytes(audioRes.bodyBytes);
 
-      _update('Playing voice sample — keep the phone unblocked.', 0.40);
+      _update('Playing voice sample — keep the phone unblocked.', 0.20);
       await _recorder.start(
         const RecordConfig(
           encoder:            AudioEncoder.wav,
@@ -111,9 +94,9 @@ class _PesqTestPageState extends State<PesqTestPage>
           echoCancel:         false,
           noiseSuppress:      false,
           autoGain:           false,
-          androidConfig: AndroidRecordConfig(audioSource: AndroidAudioSource.voiceCommunication),
+          androidConfig: AndroidRecordConfig(audioSource: AndroidAudioSource.camcorder),
         ),
-        path: degradedPath,
+        path: recordingPath,
       );
       await Future.delayed(const Duration(milliseconds: 300));
       await SpeakerControl.enableSpeaker();
@@ -124,12 +107,11 @@ class _PesqTestPageState extends State<PesqTestPage>
       final actualPath = await _recorder.stop();
       await SpeakerControl.disableSpeaker();
 
-      final resolvedPath = actualPath ?? degradedPath;
-      _update('Voice captured ✓ Sending for analysis…', 0.65);
+      final resolvedPath = actualPath ?? recordingPath;
+      _update('Voice captured ✓ Processing simulated protocols…', 0.50);
 
-      final req = http.MultipartRequest('POST', Uri.parse('$_apiBase/pesq/score'));
-      req.files.add(await http.MultipartFile.fromPath('degraded_audio', resolvedPath));
-      req.files.add(await http.MultipartFile.fromPath('room_noise', noisePath));
+      final req = http.MultipartRequest('POST', Uri.parse('$_apiBase/webrtc/device-call'));
+      req.files.add(await http.MultipartFile.fromPath('recorded_audio', resolvedPath));
       if (_sessionId != null) req.headers['x-session-id'] = _sessionId!;
 
       _update('Analysing voice clarity…', 0.75);
@@ -138,10 +120,20 @@ class _PesqTestPageState extends State<PesqTestPage>
       if (streamed.statusCode != 200) throw Exception('Server error: $body');
 
       final data = jsonDecode(body) as Map<String, dynamic>;
-      final mos  = (data['mos_score'] as num?)?.toDouble();
+
+      final pstnScore  = (data['traditional_narrowband']?['pesq_score'] as num?)?.toDouble();
+      final volteScore = (data['volte_wideband']?['pesq_score'] as num?)?.toDouble();
+      final directScore = (data['direct_recording']?['pesq_score'] as num?)?.toDouble();
+
+      final scores = <String, dynamic>{};
+      if (directScore != null) scores['Device Hardware Score'] = directScore.toStringAsFixed(2);
+      if (pstnScore != null) scores['PSTN'] = pstnScore.toStringAsFixed(2);
+      if (volteScore != null) scores['VoLTE'] = volteScore.toStringAsFixed(2);
+      
+      if (scores.isEmpty) scores['Score'] = 'N/A';
 
       _update('Voice test complete', 1.0);
-      _finishWithSuccess({'MOS Score': mos?.toStringAsFixed(2) ?? 'N/A'});
+      _finishWithSuccess(scores);
     } catch (e) {
       try { await _recorder.stop(); } catch (_) {}
       try { await SpeakerControl.disableSpeaker(); } catch (_) {}

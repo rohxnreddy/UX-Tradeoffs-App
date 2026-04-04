@@ -180,6 +180,7 @@ class _PeaqTestPageState extends State<PeaqTestPage>
       final odg  = (data['odg_score'] as num?)?.toDouble();
       final raw  = (data['raw_odg']   as num?)?.toDouble();
       final wien = (data['wiener_odg'] as num?)?.toDouble();
+      final ffmpeg = (data['ffmpeg_odg'] as num?)?.toDouble();
 
       setState(() {
         _odgScore  = odg;
@@ -189,11 +190,12 @@ class _PeaqTestPageState extends State<PeaqTestPage>
 
       _update('Audio test complete', 1.0);
 
-      _finishWithSuccess({
-        'Audio Quality Score': odg?.toStringAsFixed(2)  ?? 'N/A',
-        'Raw Score':           raw?.toStringAsFixed(2)   ?? 'N/A',
-        if (wien != null) 'Clarity Score': wien.toStringAsFixed(2),
-      });
+      final scores = <String, dynamic>{};
+      if (raw != null) scores['Raw'] = raw.toStringAsFixed(2);
+      if (wien != null) scores['Wiener'] = wien.toStringAsFixed(2);
+      if (ffmpeg != null) scores['FFmpeg'] = ffmpeg.toStringAsFixed(2);
+
+      _finishWithSuccess(scores);
     } catch (e) {
       _finishWithError(e.toString());
     }
