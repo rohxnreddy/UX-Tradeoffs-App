@@ -4,9 +4,9 @@ from typing import Optional
 
 class DeviceMeta(BaseModel):
     # ── Tester Identity (from Google Sign-In) ─────────────────────────────────
-    tester_name: Optional[str] = None
-    tester_email: Optional[str] = None
-    tester_photo_url: Optional[str] = None
+    username: Optional[str] = None
+    user_email: Optional[str] = None
+    user_photo_url: Optional[str] = None
 
     # ── Questionnaire Answers ─────────────────────────────────────────────────
     device_usage: Optional[str] = None       # "Media & streaming", "Calls & communication", …

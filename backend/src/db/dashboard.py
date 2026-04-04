@@ -13,7 +13,14 @@ from dotenv import load_dotenv
 
 # Load backend/src/.env consistently even when Streamlit is launched from repo root.
 _dotenv_path = Path(__file__).resolve().parents[1] / ".env"  # backend/src/.env
-load_dotenv(dotenv_path=_dotenv_path)
+load_dotenv(dotenv_path=str(_dotenv_path))
+
+if "DATABASE_URL" not in os.environ and _dotenv_path.exists():
+    with open(_dotenv_path) as f:
+        for line in f:
+            if line.strip() and not line.startswith("#"):
+                key, val = line.strip().split("=", 1)
+                os.environ[key] = val
 
 st.set_page_config(page_title="DB Viewer", layout="wide")
 
@@ -26,6 +33,10 @@ def get_connection():
 
 def query(sql):
     conn = get_connection()
+    if conn.closed != 0:
+        get_connection.clear()
+        conn = get_connection()
+        
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql)
@@ -33,7 +44,8 @@ def query(sql):
         return pd.DataFrame([dict(r) for r in rows])
 
     except Exception as e:
-        conn.rollback()
+        if conn.closed == 0:
+            conn.rollback()
         st.error(f"Query error: {e}")
         return pd.DataFrame()
 
@@ -43,7 +55,8 @@ def query(sql):
 st.sidebar.title("DB Tables")
 
 tables = [
-    "device_sessions",
+    "users",
+    "sessions",
     "vmaf_results",
     "peaq_results",
     "pesq_results",
@@ -56,9 +69,10 @@ limit = st.sidebar.number_input("Limit rows", min_value=10, max_value=10000, val
 
 # ─── Column sets ────────────────────────────────────────────
 
-# device_sessions: show all stored metadata columns.
+# sessions: show all stored metadata columns.
 # This avoids the dashboard silently hiding newly-added fields.
-device_session_cols = "*"
+sessions_cols = "*"
+users_cols = "*"
 
 peaq_cols = """
     id, session_id, created_at,
@@ -78,9 +92,13 @@ pesq_cols = """
 
 st.title("Database Viewer")
 
-if selected_table == "device_sessions":
+if selected_table == "sessions":
     df = query(
-        f"SELECT {device_session_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
+        f"SELECT {sessions_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
+    )
+elif selected_table == "users":
+    df = query(
+        f"SELECT {users_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
     )
 elif selected_table == "peaq_results":
     df = query(

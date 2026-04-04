@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen>
   final _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
   bool _loading = false;
   String? _error;
+  bool _agreedToPrivacy = false;
 
   late AnimationController _fadeCtrl;
   late Animation<double> _fade;
@@ -107,95 +108,111 @@ class _LoginScreenState extends State<LoginScreen>
         opacity: _fade,
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 40),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Spacer(flex: 2),
+                const Spacer(flex: 3),
 
-                // Icon
+                // Premium Icon
                 Container(
-                  width: 72,
-                  height: 72,
+                  width: 80,
+                  height: 80,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: AppTheme.surface,
-                    border: Border.all(color: AppTheme.border),
+                    border: Border.all(color: AppTheme.border, width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.accent.withOpacity(0.15),
-                        blurRadius: 30,
-                        spreadRadius: 2,
+                        color: AppTheme.accent.withOpacity(0.2),
+                        blurRadius: 40,
+                        spreadRadius: 5,
                       ),
                     ],
                   ),
                   child: const Icon(
-                    Icons.lock_outline,
+                    Icons.fingerprint,
                     color: AppTheme.accent,
-                    size: 32,
+                    size: 38,
                   ),
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 48),
 
                 // Heading
                 const Text(
                   'Sign in to continue',
                   style: TextStyle(
                     color: AppTheme.textPri,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                const Spacer(flex: 1),
 
-                const Text(
-                  'Your organisation credentials are used\n'
-                      'to associate test results with your device.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppTheme.textSec,
-                    fontSize: 14,
-                    height: 1.6,
-                  ),
+                // Privacy Policy Tick
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Checkbox(
+                        value: _agreedToPrivacy,
+                        activeColor: AppTheme.accent,
+                        checkColor: Colors.black,
+                        side: const BorderSide(color: AppTheme.border, width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        onChanged: (val) {
+                          setState(() {
+                            _agreedToPrivacy = val ?? false;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () => _showPrivacyPolicy(context),
+                      child: const Text.rich(
+                        TextSpan(
+                          text: 'I agree to the ',
+                          style: TextStyle(color: AppTheme.textSec, fontSize: 13),
+                          children: [
+                            TextSpan(
+                              text: 'Privacy Policy',
+                              style: TextStyle(
+                                color: AppTheme.accent,
+                                fontWeight: FontWeight.w600,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+                
+                const SizedBox(height: 24),
 
-                const Spacer(flex: 2),
-
-                // Google sign-in button
+                // Button
                 _GoogleButton(
                   loading: _loading,
-                  onTap: _loading ? null : _signIn,
+                  onTap: (_loading || !_agreedToPrivacy) ? null : _signIn,
                 ),
 
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Text(
                     _error!,
-                    style: const TextStyle(
-                      color: AppTheme.bad,
-                      fontSize: 13,
-                    ),
+                    style: const TextStyle(color: AppTheme.bad, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
                 ],
 
-                const Spacer(),
-
-                // Footer
-                const Text(
-                  'Test data is stored securely and\n'
-                      'used only for quality research.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppTheme.textDim,
-                    fontSize: 12,
-                    height: 1.6,
-                  ),
-                ),
-
-                const SizedBox(height: 24),
+                const Spacer(flex: 3),
               ],
             ),
           ),
@@ -203,9 +220,76 @@ class _LoginScreenState extends State<LoginScreen>
       ),
     );
   }
+
+  void _showPrivacyPolicy(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bg,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Privacy Policy',
+                    style: TextStyle(
+                      color: AppTheme.textPri,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      children: const [
+                        Text(
+                          '1. Data Collection\n'
+                          'We collect device metadata such as model, brand, OS version, and network performance indicators. We do not inspect personal files or communications.\n\n'
+                          '2. Data Usage\n'
+                          'Your data is securely stored and exclusively utilized to measure network and device quality. We do not sell your data to third parties.\n\n'
+                          '3. Account Identity\n'
+                          'We associate your test results with your Google Sign-In identity to maintain a continuous record of your device performance.\n\n'
+                          '4. Revocation\n'
+                          'You may log out at any time to halt the collection and syncing of data for this session.\n',
+                          style: TextStyle(
+                            color: AppTheme.textSec,
+                            fontSize: 14,
+                            height: 1.6,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
-// ── Google sign-in button ─────────────────────────────────────────────────────
+// ── Sign-in button ────────────────────────────────────────────────────────────
 
 class _GoogleButton extends StatelessWidget {
   final bool loading;
@@ -215,46 +299,47 @@ class _GoogleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    bool disabled = onTap == null && !loading;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedOpacity(
-        opacity: loading ? 0.5 : 1.0,
+        opacity: disabled ? 0.35 : 1.0,
         duration: const Duration(milliseconds: 200),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          height: 56,
           decoration: BoxDecoration(
             color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: AppTheme.border),
           ),
           child: loading
               ? const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppTheme.accent,
-              ),
-            ),
-          )
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: AppTheme.accent,
+                    ),
+                  ),
+                )
               : Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _GoogleIcon(),
-              const SizedBox(width: 14),
-              const Text(
-                'Continue with Google',
-                style: TextStyle(
-                  color: AppTheme.textPri,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _GoogleIcon(),
+                    const SizedBox(width: 14),
+                    const Text(
+                      'Continue with Google',
+                      style: TextStyle(
+                        color: AppTheme.textPri,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -300,7 +385,7 @@ class _GooglePainter extends CustomPainter {
     canvas.drawCircle(
       Offset(cx, cy),
       r * 0.55,
-      Paint()..color = AppTheme.surface,
+      Paint()..color = AppTheme.surface, // Matches the button background
     );
   }
 

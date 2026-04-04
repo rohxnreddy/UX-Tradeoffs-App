@@ -42,24 +42,52 @@ def _jsonb(obj) -> Optional[str]:
         return None
 
 
-# ─── 1. Device Session ────────────────────────────────────────────────────────
-
-async def insert_device_session(meta: dict) -> UUID:
+async def upsert_user(meta: dict) -> UUID:
     """
-    Insert a device_sessions row from the raw DeviceMeta dict.
-    Includes tester identity (Google Sign-In) and questionnaire answers.
+    Insert or update a user based on user_email.
+    Returns the user's UUID.
+    """
+    pool = await get_pool()
+    # Require email to upsert properly; if missing, we could just rely on the DB failure
+    # or handle it nicely. Let's let the DB throw if user_email is NULL and there's a constraint,
+    # or we can handle it at the API layer.
+    row = await pool.fetchrow(
+        """
+        INSERT INTO users (
+            username, user_email, user_photo_url,
+            device_usage, network_env, testing_purpose, usage_frequency
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (user_email) DO UPDATE SET
+            username = EXCLUDED.username,
+            user_photo_url = EXCLUDED.user_photo_url,
+            device_usage = COALESCE(EXCLUDED.device_usage, users.device_usage),
+            network_env = COALESCE(EXCLUDED.network_env, users.network_env),
+            testing_purpose = COALESCE(EXCLUDED.testing_purpose, users.testing_purpose),
+            usage_frequency = COALESCE(EXCLUDED.usage_frequency, users.usage_frequency)
+        RETURNING id
+        """,
+        meta.get("username"),
+        meta.get("user_email"),
+        meta.get("user_photo_url"),
+        meta.get("device_usage"),
+        meta.get("network_env"),
+        meta.get("testing_purpose"),
+        meta.get("usage_frequency"),
+    )
+    return row["id"]
+
+
+async def insert_session(user_id: UUID, meta: dict) -> UUID:
+    """
+    Insert a sessions row linked to a user.
     Returns the new UUID so callers can attach subsequent test results.
     """
     pool = await get_pool()
 
     row = await pool.fetchrow(
         """
-        INSERT INTO device_sessions (
-            -- Tester identity
-            tester_name, tester_email, tester_photo_url,
-
-            -- Questionnaire answers
-            device_usage, network_env, testing_purpose, usage_frequency,
+        INSERT INTO sessions (
+            user_id,
 
             -- Hardware
             device_model, device_brand, device_manufacturer, device_product,
@@ -109,65 +137,52 @@ async def insert_device_session(meta: dict) -> UUID:
             -- Audio
             audio_output_route
         ) VALUES (
-            -- Tester identity
-            $1, $2, $3,
-
-            -- Questionnaire answers
-            $4, $5, $6, $7,
+            $1,
 
             -- Hardware
-            $8, $9, $10, $11, $12, $13, $14,
+            $2, $3, $4, $5, $6, $7, $8,
 
             -- OS & System
-            $15, $16, $17, $18, $19, $20, $21, $22,
+            $9, $10, $11, $12, $13, $14, $15, $16,
 
             -- App
-            $23, $24, $25, $26, $27,
+            $17, $18, $19, $20, $21,
 
             -- Screen
-            $28, $29, $30, $31,
+            $22, $23, $24, $25,
 
             -- Locale
-            $32, $33, $34, $35,
+            $26, $27, $28, $29,
 
             -- Battery
-            $36, $37,
+            $30, $31,
 
             -- Network
-            $38, $39, $40, $41, $42, $43, $44, $45,
+            $32, $33, $34, $35, $36, $37, $38, $39,
 
             -- Location
-            $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56,
+            $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50,
 
             -- Permissions
-            $57::jsonb,
+            $51::jsonb,
 
             -- Session Activity
-            $58, $59, $60, $61,
+            $52, $53, $54, $55,
 
             -- Performance
-            $62, $63, $64,
+            $56, $57, $58,
 
             -- Memory & Storage
-            $65, $66, $67, $68, $69,
+            $59, $60, $61, $62, $63,
 
             -- Audio
-            $70
+            $64
         )
         RETURNING id
         """,
-        # Tester identity ($1–$3)
-        meta.get("tester_name"),
-        meta.get("tester_email"),
-        meta.get("tester_photo_url"),
+        user_id,
 
-        # Questionnaire answers ($4–$7)
-        meta.get("device_usage"),
-        meta.get("network_env"),
-        meta.get("testing_purpose"),
-        meta.get("usage_frequency"),
-
-        # Hardware ($8–$14)
+        # Hardware ($2–$8)
         meta.get("device_model"),
         meta.get("device_brand"),
         meta.get("device_manufacturer"),
@@ -176,7 +191,7 @@ async def insert_device_session(meta: dict) -> UUID:
         meta.get("supported_abis"),
         meta.get("cpu_cores"),
 
-        # OS & System ($15–$22)
+        # OS & System ($9–$16)
         meta.get("android_version"),
         meta.get("sdk_version"),
         meta.get("build_number"),
@@ -186,30 +201,30 @@ async def insert_device_session(meta: dict) -> UUID:
         meta.get("is_physical_device"),
         meta.get("is_rooted"),
 
-        # App ($23–$27)
+        # App ($17–$21)
         meta.get("app_package_name"),
         meta.get("app_version_name"),
         meta.get("app_version_code"),
         meta.get("app_installer_package"),
         meta.get("is_debug_build"),
 
-        # Screen ($28–$31)
+        # Screen ($22–$25)
         meta.get("screen_width_px"),
         meta.get("screen_height_px"),
         meta.get("screen_density"),
         meta.get("display_refresh_rate"),
 
-        # Locale ($32–$35)
+        # Locale ($26–$29)
         meta.get("device_language"),
         meta.get("device_locale"),
         meta.get("timezone"),
         meta.get("country_code"),
 
-        # Battery ($36–$37)
+        # Battery ($30–$31)
         meta.get("battery_level"),
         meta.get("battery_state"),
 
-        # Network ($38–$45)
+        # Network ($32–$39)
         meta.get("connection_type"),
         meta.get("wifi_name"),
         meta.get("wifi_bssid"),
@@ -219,7 +234,7 @@ async def insert_device_session(meta: dict) -> UUID:
         meta.get("network_speed_category"),
         meta.get("network_latency_ms"),
 
-        # Location ($46–$56)
+        # Location ($40–$50)
         meta.get("latitude"),
         meta.get("longitude"),
         meta.get("altitude"),
@@ -232,28 +247,28 @@ async def insert_device_session(meta: dict) -> UUID:
         meta.get("admin_area"),
         meta.get("iso_country_code"),
 
-        # Permissions ($57)
+        # Permissions ($51)
         _jsonb(meta.get("permission_statuses")),
 
-        # Session Activity ($58–$61)
+        # Session Activity ($52–$55)
         _parse_dt(meta.get("session_start")),
         meta.get("session_screen_views"),
         meta.get("session_user_actions"),
         meta.get("session_background_count"),
 
-        # Performance ($62–$64)
+        # Performance ($56–$58)
         meta.get("app_launch_time_ms"),
         meta.get("frame_drop_count"),
         meta.get("last_crash_info"),
 
-        # Memory & Storage ($65–$69)
+        # Memory & Storage ($59–$63)
         meta.get("device_tier"),
         meta.get("total_ram_mb"),
         meta.get("available_ram_mb"),
         meta.get("total_disk_mb"),
         meta.get("free_disk_mb"),
 
-        # Audio ($70)
+        # Audio ($64)
         meta.get("audio_output_route"),
     )
     return row["id"]

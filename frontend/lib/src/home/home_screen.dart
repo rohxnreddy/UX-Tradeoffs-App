@@ -6,7 +6,8 @@ import '../runner/test_model.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(List<TestId> selected) onStart;
-  const HomeScreen({super.key, required this.onStart});
+  final VoidCallback onLogout;
+  const HomeScreen({super.key, required this.onStart, required this.onLogout});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -102,23 +103,57 @@ class _HomeScreenState extends State<HomeScreen>
                         ],
                       ),
                     ),
-                    if (store.googlePhotoUrl != null)
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundImage: NetworkImage(store.googlePhotoUrl!),
-                      )
-                    else
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.surface,
-                          border: Border.all(color: AppTheme.border),
-                        ),
-                        child: const Icon(Icons.person,
-                            color: AppTheme.textSec, size: 20),
+                    PopupMenuButton<String>(
+                      onSelected: (val) {
+                        if (val == 'logout') {
+                          widget.onLogout();
+                        }
+                      },
+                      offset: const Offset(0, 48),
+                      color: AppTheme.surface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: AppTheme.border),
                       ),
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'profile',
+                          child: Row(
+                            children: [
+                              Icon(Icons.person_outline, size: 20, color: AppTheme.textPri),
+                              SizedBox(width: 12),
+                              Text('Profile Info', style: TextStyle(color: AppTheme.textPri)),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'logout',
+                          child: Row(
+                            children: [
+                              Icon(Icons.logout, size: 20, color: AppTheme.bad),
+                              SizedBox(width: 12),
+                              Text('Logout', style: TextStyle(color: AppTheme.bad, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      child: store.googlePhotoUrl != null
+                          ? CircleAvatar(
+                              radius: 20,
+                              backgroundImage: NetworkImage(store.googlePhotoUrl!),
+                            )
+                          : Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppTheme.surface,
+                                border: Border.all(color: AppTheme.border),
+                              ),
+                              child: const Icon(Icons.person,
+                                  color: AppTheme.textSec, size: 20),
+                            ),
+                    ),
                   ],
                 ),
               ),

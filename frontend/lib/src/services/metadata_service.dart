@@ -116,9 +116,9 @@ class MetadataService {
 
     return {
       // ── Tester identity (Google Sign-In) ──────────────────────────────────
-      'tester_name':      store.googleDisplayName ?? testerName,
-      'tester_email':     store.googleEmail,
-      'tester_photo_url': store.googlePhotoUrl,
+      'username':         store.googleDisplayName ?? testerName,
+      'user_email':       store.googleEmail,
+      'user_photo_url':   store.googlePhotoUrl,
 
       // ── Questionnaire answers (flat DB column names) ──────────────────────
       'device_usage':    store.deviceUsage    ?? questionnaireAnswers?['device_usage']    ?? '',

@@ -53,7 +53,7 @@ def init():
 #
 # Called once per app launch (after login + questionnaire).
 # The body includes:
-#   • tester_name, tester_email, tester_photo_url  (from Google Sign-In)
+#   • username, user_email, user_photo_url  (from Google Sign-In)
 #   • device_usage, network_env, testing_purpose, usage_frequency  (questionnaire)
 #   • all device / OS / network / location fields
 #
@@ -62,15 +62,17 @@ def init():
 
 @app.post("/device/metadata")
 async def receive_metadata(meta: DeviceMeta):
-    session_id = await db.insert_device_session(meta.model_dump())
+    meta_dict = meta.model_dump()
+    user_id = await db.upsert_user(meta_dict)
+    session_id = await db.insert_session(user_id, meta_dict)
     return {
         "status":     "ok",
         "session_id": str(session_id),
         # Echo back only the identity + questionnaire fields for the client to confirm
-        "tester": {
-            "name":      meta.tester_name,
-            "email":     meta.tester_email,
-            "photo_url": meta.tester_photo_url,
+        "user": {
+            "username":  meta.username,
+            "email":     meta.user_email,
+            "photo_url": meta.user_photo_url,
         },
         "questionnaire": {
             "device_usage":    meta.device_usage,
@@ -92,13 +94,14 @@ async def get_session(session_id: UUID):
     row = await pool.fetchrow(
         """
         SELECT
-            id, created_at,
-            tester_name, tester_email, tester_photo_url,
-            device_usage, network_env, testing_purpose, usage_frequency,
-            device_model, device_brand, android_version,
-            app_version_name, connection_type, country
-        FROM device_sessions
-        WHERE id = $1
+            s.id, s.created_at,
+            u.username, u.user_email, u.user_photo_url,
+            u.device_usage, u.network_env, u.testing_purpose, u.usage_frequency,
+            s.device_model, s.device_brand, s.android_version,
+            s.app_version_name, s.connection_type, s.country
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.id = $1
         """,
         session_id,
     )

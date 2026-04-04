@@ -1,29 +1,41 @@
 -- ============================================================
 --  Quality Testing Platform — PostgreSQL Schema
---  Tables: device_sessions  →  [vmaf|peaq|pesq|iqa]_results
+--  Tables: users -> sessions  →  [vmaf|peaq|pesq|iqa]_results
 -- ============================================================
 
 -- Enable UUID generation
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- ─── 1. DEVICE SESSIONS ──────────────────────────────────────────────────────
---  One row per POST /device/metadata call.
---  All subsequent test results FK into this table.
+-- ─── 1. USERS ───────────────────────────────────────────────────────────────
+--  One row per user (identified by email).
 -- ─────────────────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS device_sessions (
+CREATE TABLE IF NOT EXISTS users (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at              TIMESTAMPTZ NOT NULL    DEFAULT now(),
 
-    -- Tester Identity (from Google Sign-In)
-    tester_name             TEXT,
-    tester_email            TEXT,
-    tester_photo_url        TEXT,
+    -- Identity
+    username                TEXT,
+    user_email              TEXT        UNIQUE,
+    user_photo_url          TEXT,
 
     -- Questionnaire Answers
     device_usage            TEXT,       -- e.g. "Media & streaming"
     network_env             TEXT,       -- e.g. "Strong Wi-Fi (home/office)"
     testing_purpose         TEXT,       -- e.g. "Personal research"
-    usage_frequency         TEXT,       -- e.g. "Weekly"
+    usage_frequency         TEXT        -- e.g. "Weekly"
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_user_email ON users (user_email);
+
+
+-- ─── 2. SESSIONS ─────────────────────────────────────────────────────────────
+--  One row per POST /device/metadata call.
+--  All subsequent test results FK into this table.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sessions (
+    id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                 UUID        REFERENCES users (id) ON DELETE CASCADE,
+    created_at              TIMESTAMPTZ NOT NULL    DEFAULT now(),
 
     -- Hardware
     device_model            TEXT,
@@ -115,25 +127,16 @@ CREATE TABLE IF NOT EXISTS device_sessions (
     audio_output_route      TEXT
 );
 
--- Run these if the table already exists (safe to run multiple times)
-ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS tester_name         TEXT;
-ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS tester_email        TEXT;
-ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS tester_photo_url    TEXT;
-ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS device_usage        TEXT;
-ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS network_env         TEXT;
-ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS testing_purpose     TEXT;
-ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS usage_frequency     TEXT;
-
-CREATE INDEX IF NOT EXISTS idx_device_sessions_created_at    ON device_sessions (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_device_model  ON device_sessions (device_model);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_app_version   ON device_sessions (app_version_name);
-CREATE INDEX IF NOT EXISTS idx_device_sessions_tester_email  ON device_sessions (tester_email);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_created_at    ON sessions (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_device_model  ON sessions (device_model);
+CREATE INDEX IF NOT EXISTS idx_sessions_app_version   ON sessions (app_version_name);
 
 
--- ─── 2. VMAF RESULTS ─────────────────────────────────────────────────────────
+-- ─── 3. VMAF RESULTS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS vmaf_results (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id          UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
+    session_id          UUID        REFERENCES sessions (id) ON DELETE SET NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- Input context
@@ -151,10 +154,10 @@ CREATE INDEX IF NOT EXISTS idx_vmaf_session    ON vmaf_results (session_id);
 CREATE INDEX IF NOT EXISTS idx_vmaf_created_at ON vmaf_results (created_at DESC);
 
 
--- ─── 3. PEAQ RESULTS ─────────────────────────────────────────────────────────
+-- ─── 4. PEAQ RESULTS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS peaq_results (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id              UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
+    session_id              UUID        REFERENCES sessions (id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- Input context
@@ -178,10 +181,10 @@ CREATE INDEX IF NOT EXISTS idx_peaq_session    ON peaq_results (session_id);
 CREATE INDEX IF NOT EXISTS idx_peaq_created_at ON peaq_results (created_at DESC);
 
 
--- ─── 4. PESQ RESULTS ─────────────────────────────────────────────────────────
+-- ─── 5. PESQ RESULTS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS pesq_results (
     id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id              UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
+    session_id              UUID        REFERENCES sessions (id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- 'simulated' = GET /webrtc/call ; 'device' = POST /webrtc/device-call ; 'upload' = POST /pesq/score
@@ -207,12 +210,12 @@ CREATE INDEX IF NOT EXISTS idx_pesq_created_at ON pesq_results (created_at DESC)
 CREATE INDEX IF NOT EXISTS idx_pesq_type       ON pesq_results (call_type);
 
 
--- ─── 5. IQA RESULTS ──────────────────────────────────────────────────────────
+-- ─── 6. IQA RESULTS ──────────────────────────────────────────────────────────
 --  One row per image within a POST /iqa/score batch call.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS iqa_results (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id          UUID        REFERENCES device_sessions (id) ON DELETE SET NULL,
+    session_id          UUID        REFERENCES sessions (id) ON DELETE SET NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- One row per image within the batch

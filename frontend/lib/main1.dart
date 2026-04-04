@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'src/core/session_store.dart';
 import 'src/core/theme.dart';
 import 'src/runner/test_model.dart';
+import 'src/services/metadata_service.dart';
 import 'src/splash/splash_screen.dart';
 import 'src/auth/login_screen.dart';
 import 'src/questionnaire/questionnaire_screen.dart';
@@ -15,6 +17,7 @@ import 'src/results/results_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
+  await SessionStore.instance.init();
   runApp(const UxTradeoffApp());
 }
 
@@ -66,10 +69,26 @@ class _AppRouterState extends State<_AppRouter> {
   Widget _buildPage() {
     switch (_page) {
       case _AppPage.splash:
-        return SplashScreen(onDone: () => _go(_AppPage.login));
+        return SplashScreen(onDone: () {
+          if (SessionStore.instance.isReady) {
+            MetadataService.instance.collectAndSend();
+            _go(_AppPage.home);
+          } else if (SessionStore.instance.isLoggedIn) {
+            _go(_AppPage.questionnaire);
+          } else {
+            _go(_AppPage.login);
+          }
+        });
 
       case _AppPage.login:
-        return LoginScreen(onLoggedIn: () => _go(_AppPage.questionnaire));
+        return LoginScreen(onLoggedIn: () {
+          if (SessionStore.instance.hasAnswered) {
+             MetadataService.instance.collectAndSend();
+             _go(_AppPage.home);
+          } else {
+             _go(_AppPage.questionnaire);
+          }
+        });
 
       case _AppPage.questionnaire:
         return QuestionnaireScreen(onDone: () => _go(_AppPage.home));
@@ -81,6 +100,10 @@ class _AppRouterState extends State<_AppRouter> {
               _selected = selected;
               _page     = _AppPage.running;
             });
+          },
+          onLogout: () async {
+            await SessionStore.instance.clear();
+            _go(_AppPage.login);
           },
         );
 
