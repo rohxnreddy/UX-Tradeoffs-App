@@ -29,10 +29,10 @@ import 'test_model.dart';
 // ── Progress model ────────────────────────────────────────────────────────────
 
 class TestProgress {
-  final TestId     testId;
+  final TestId testId;
   final TestStatus status;
-  final String     message;
-  final double     fraction; // 0..1
+  final String message;
+  final double fraction; // 0..1
 
   const TestProgress({
     required this.testId,
@@ -50,24 +50,26 @@ class BatteryRunner {
   final ProgressCallback onProgress;
   BatteryRunner({required this.onProgress});
 
-  void _emit(String msg, double frac) => onProgress(TestProgress(
-    testId:   TestId.battery,
-    status:   TestStatus.running,
-    message:  msg,
-    fraction: frac,
-  ));
+  void _emit(String msg, double frac) => onProgress(
+    TestProgress(
+      testId: TestId.battery,
+      status: TestStatus.running,
+      message: msg,
+      fraction: frac,
+    ),
+  );
 
   Future<TestResult> run() async {
-    final battery  = Battery();
+    final battery = Battery();
     final isolates = <Isolate>[];
 
     _emit('Taking battery snapshot…', 0.05);
     final startLevel = await battery.batteryLevel;
     final startState = await battery.batteryState;
-    final startTime  = DateTime.now();
+    final startTime = DateTime.now();
 
     _emit('Starting CPU + network stress…', 0.10);
-    final cores  = Platform.numberOfProcessors;
+    final cores = Platform.numberOfProcessors;
     final target = cores > 2 ? 2 : 1;
     for (int i = 0; i < target; i++) {
       isolates.add(await Isolate.spawn(_cpuBurn, null));
@@ -75,13 +77,14 @@ class BatteryRunner {
 
     Timer? netTimer;
     netTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
-      http.get(Uri.parse('https://speed.hetzner.de/1MB.bin'))
+      http
+          .get(Uri.parse('https://speed.hetzner.de/1MB.bin'))
           .catchError((_) => http.Response('', 599));
     });
 
     const totalSeconds = 45;
-    const stepSeconds  = 5;
-    const steps        = totalSeconds ~/ stepSeconds;
+    const stepSeconds = 5;
+    const steps = totalSeconds ~/ stepSeconds;
 
     for (int i = 0; i < steps; i++) {
       await Future.delayed(const Duration(seconds: stepSeconds));
@@ -95,21 +98,21 @@ class BatteryRunner {
     for (final iso in isolates) iso.kill(priority: Isolate.immediate);
 
     _emit('Computing drain score…', 0.95);
-    final endLevel  = await battery.batteryLevel;
-    final endState  = await battery.batteryState;
-    final elapsed   = DateTime.now().difference(startTime).inSeconds / 60.0;
-    final drop      = startLevel - endLevel;
+    final endLevel = await battery.batteryLevel;
+    final endState = await battery.batteryState;
+    final elapsed = DateTime.now().difference(startTime).inSeconds / 60.0;
+    final drop = startLevel - endLevel;
     final drainRate = elapsed > 0 ? drop / elapsed : 0.0;
 
     return TestResult(
-      id:   TestId.battery,
+      id: TestId.battery,
       status: TestStatus.done,
       scores: {
-        'Start Level':  '$startLevel% (${startState.name})',
-        'End Level':    '$endLevel% (${endState.name})',
-        'Drain':        '$drop%',
-        'Duration':     '${elapsed.toStringAsFixed(1)} min',
-        'Drain Score':  '${drainRate.toStringAsFixed(3)} %/min',
+        'Start Level': '$startLevel% (${startState.name})',
+        'End Level': '$endLevel% (${endState.name})',
+        'Drain': '$drop%',
+        'Duration': '${elapsed.toStringAsFixed(1)} min',
+        'Drain Score': '${drainRate.toStringAsFixed(3)} %/min',
       },
       completedAt: DateTime.now(),
     );

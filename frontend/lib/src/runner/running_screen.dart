@@ -24,7 +24,7 @@ import '../tests/pesq_test_page.dart';
 import '../tests/iqa_test_page.dart';
 
 class RunningScreen extends StatefulWidget {
-  final List<TestId>                      selectedTests;
+  final List<TestId> selectedTests;
   final void Function(List<TestResult> r) onDone;
 
   const RunningScreen({
@@ -39,37 +39,37 @@ class RunningScreen extends StatefulWidget {
 
 class _RunningScreenState extends State<RunningScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController      _pulseCtrl;
+  late AnimationController _pulseCtrl;
   final Map<TestId, TestProgress> _progress = {};
   TestId? _currentTest;
-  bool    _done        = false;
-  String  _overallMsg  = 'Preparing…';
+  bool _done = false;
+  String _overallMsg = 'Preparing…';
   final List<TestResult> _results = [];
 
   Completer<TestResult>? _vmafCompleter;
 
   // ── Design maps ──────────────────────────────────────────────────────────
   static const _testNames = {
-    TestId.vmaf:    'Video Experience',
-    TestId.peaq:    'Audio Quality',
-    TestId.pesq:    'Voice Clarity',
-    TestId.iqa:     'Camera Quality',
+    TestId.vmaf: 'Video Experience',
+    TestId.peaq: 'Audio Quality',
+    TestId.pesq: 'Voice Clarity',
+    TestId.iqa: 'Camera Quality',
     TestId.battery: 'Battery Health',
   };
 
   static const _testColors = {
-    TestId.vmaf:    AppTheme.vmafColor,
-    TestId.peaq:    AppTheme.peaqColor,
-    TestId.pesq:    AppTheme.pesqColor,
-    TestId.iqa:     AppTheme.iqaColor,
+    TestId.vmaf: AppTheme.vmafColor,
+    TestId.peaq: AppTheme.peaqColor,
+    TestId.pesq: AppTheme.pesqColor,
+    TestId.iqa: AppTheme.iqaColor,
     TestId.battery: AppTheme.battColor,
   };
 
   static const _testIcons = {
-    TestId.vmaf:    Icons.videocam_outlined,
-    TestId.peaq:    Icons.music_note_outlined,
-    TestId.pesq:    Icons.record_voice_over_outlined,
-    TestId.iqa:     Icons.image_outlined,
+    TestId.vmaf: Icons.videocam_outlined,
+    TestId.peaq: Icons.music_note_outlined,
+    TestId.pesq: Icons.record_voice_over_outlined,
+    TestId.iqa: Icons.image_outlined,
     TestId.battery: Icons.battery_charging_full_outlined,
   };
 
@@ -79,15 +79,16 @@ class _RunningScreenState extends State<RunningScreen>
   void initState() {
     super.initState();
     _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
-      ..repeat(reverse: true);
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
 
     for (final id in TestId.values) {
       final selected = widget.selectedTests.contains(id);
       _progress[id] = TestProgress(
-        testId:   id,
-        status:   selected ? TestStatus.pending : TestStatus.skipped,
-        message:  selected ? 'Waiting…' : 'Skipped',
+        testId: id,
+        status: selected ? TestStatus.pending : TestStatus.skipped,
+        message: selected ? 'Waiting…' : 'Skipped',
         fraction: 0,
       );
     }
@@ -115,11 +116,11 @@ class _RunningScreenState extends State<RunningScreen>
       if (!mounted) return;
       setState(() {
         _currentTest = def.id;
-        _overallMsg  = 'Running ${_testNames[def.id]}…';
+        _overallMsg = 'Running ${_testNames[def.id]}…';
         _progress[def.id] = TestProgress(
-          testId:   def.id,
-          status:   TestStatus.running,
-          message:  'Starting ${_testNames[def.id]}…',
+          testId: def.id,
+          status: TestStatus.running,
+          message: 'Starting ${_testNames[def.id]}…',
           fraction: 0,
         );
       });
@@ -129,10 +130,10 @@ class _RunningScreenState extends State<RunningScreen>
         result = await _dispatchTest(def);
       } catch (e) {
         result = TestResult(
-          id:           def.id,
-          status:       TestStatus.failed,
+          id: def.id,
+          status: TestStatus.failed,
           errorMessage: e.toString(),
-          completedAt:  DateTime.now(),
+          completedAt: DateTime.now(),
         );
       }
 
@@ -144,9 +145,9 @@ class _RunningScreenState extends State<RunningScreen>
         final isVmafPending =
             result.id == TestId.vmaf && result.status == TestStatus.running;
         _progress[def.id] = TestProgress(
-          testId:   def.id,
-          status:   isVmafPending ? TestStatus.running : result.status,
-          message:  isVmafPending
+          testId: def.id,
+          status: isVmafPending ? TestStatus.running : result.status,
+          message: isVmafPending
               ? 'Uploading in background…'
               : result.status == TestStatus.done
               ? '${_testNames[def.id]} complete'
@@ -166,9 +167,9 @@ class _RunningScreenState extends State<RunningScreen>
         setState(() {
           _overallMsg = 'Finishing video upload…';
           _progress[TestId.vmaf] = TestProgress(
-            testId:   TestId.vmaf,
-            status:   TestStatus.running,
-            message:  'Uploading in background…',
+            testId: TestId.vmaf,
+            status: TestStatus.running,
+            message: 'Uploading in background…',
             fraction: 0.85,
           );
         });
@@ -183,9 +184,9 @@ class _RunningScreenState extends State<RunningScreen>
       if (mounted) {
         setState(() {
           _progress[TestId.vmaf] = TestProgress(
-            testId:   TestId.vmaf,
-            status:   vmafResult.status,
-            message:  vmafResult.status == TestStatus.done
+            testId: TestId.vmaf,
+            status: vmafResult.status,
+            message: vmafResult.status == TestStatus.done
                 ? '${_testNames[TestId.vmaf]} complete'
                 : 'Failed: ${vmafResult.errorMessage}',
             fraction: 1,
@@ -196,7 +197,7 @@ class _RunningScreenState extends State<RunningScreen>
 
     if (!mounted) return;
     setState(() {
-      _done       = true;
+      _done = true;
       _overallMsg = 'All tests complete!';
     });
 
@@ -210,32 +211,40 @@ class _RunningScreenState extends State<RunningScreen>
     switch (def.id) {
       case TestId.vmaf:
         _vmafCompleter = Completer<TestResult>();
-        return _pushPage(VmafTestPage(
-          onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
-          onResultReady: (result) {
-            if (!(_vmafCompleter?.isCompleted ?? true)) {
-              _vmafCompleter!.complete(result);
-            }
-          },
-        ));
+        return _pushPage(
+          VmafTestPage(
+            onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
+            onResultReady: (result) {
+              if (!(_vmafCompleter?.isCompleted ?? true)) {
+                _vmafCompleter!.complete(result);
+              }
+            },
+          ),
+        );
 
       case TestId.peaq:
-        return _pushPage(PeaqTestPage(
-          onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
-        ));
+        return _pushPage(
+          PeaqTestPage(
+            onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
+          ),
+        );
 
       case TestId.pesq:
-        return _pushPage(PesqTestPage(
-          onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
-        ));
+        return _pushPage(
+          PesqTestPage(
+            onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
+          ),
+        );
 
       case TestId.iqa:
-        return _pushPage(IqaTestPage(
-          onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
-        ));
+        return _pushPage(
+          IqaTestPage(
+            onProgressUpdate: (msg, frac) => _emitProgress(def.id, msg, frac),
+          ),
+        );
 
       case TestId.battery:
-      // Battery has no UI — runs in-process with progress callbacks.
+        // Battery has no UI — runs in-process with progress callbacks.
         final runner = BatteryRunner(
           onProgress: (p) {
             if (mounted) setState(() => _progress[p.testId] = p);
@@ -247,9 +256,9 @@ class _RunningScreenState extends State<RunningScreen>
 
   /// Push [page], which must pop with a [TestResult].
   Future<TestResult> _pushPage(Widget page) async {
-    final result = await Navigator.of(context).push<TestResult>(
-      MaterialPageRoute(builder: (_) => page),
-    );
+    final result = await Navigator.of(
+      context,
+    ).push<TestResult>(MaterialPageRoute(builder: (_) => page));
     if (result == null) {
       throw Exception('Test was cancelled or returned no result.');
     }
@@ -260,9 +269,9 @@ class _RunningScreenState extends State<RunningScreen>
     if (!mounted) return;
     setState(() {
       _progress[id] = TestProgress(
-        testId:   id,
-        status:   TestStatus.running,
-        message:  msg,
+        testId: id,
+        status: TestStatus.running,
+        message: msg,
         fraction: frac,
       );
       _overallMsg = msg;
@@ -297,24 +306,23 @@ class _RunningScreenState extends State<RunningScreen>
                           color: _done
                               ? AppTheme.good
                               : AppTheme.accent.withOpacity(
-                              0.3 + 0.7 * _pulseCtrl.value),
+                                  0.3 + 0.7 * _pulseCtrl.value,
+                                ),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
                             color: (_done ? AppTheme.good : AppTheme.accent)
-                                .withOpacity(_done
-                                ? 0.25
-                                : 0.1 + 0.15 * _pulseCtrl.value),
+                                .withOpacity(
+                                  _done ? 0.25 : 0.1 + 0.15 * _pulseCtrl.value,
+                                ),
                             blurRadius: 32,
                             spreadRadius: 4,
                           ),
                         ],
                       ),
                       child: Icon(
-                        _done
-                            ? Icons.check_rounded
-                            : Icons.analytics_outlined,
+                        _done ? Icons.check_rounded : Icons.analytics_outlined,
                         color: _done ? AppTheme.good : AppTheme.accent,
                         size: 36,
                       ),
@@ -345,19 +353,19 @@ class _RunningScreenState extends State<RunningScreen>
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 children: allTests.map((def) {
-                  final p     = _progress[def.id]!;
+                  final p = _progress[def.id]!;
                   final color = _testColors[def.id]!;
-                  final icon  = _testIcons[def.id]!;
+                  final icon = _testIcons[def.id]!;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _TestProgressTile(
-                      definition:  def,
+                      definition: def,
                       displayName: _testNames[def.id]!,
-                      progress:    p,
-                      color:       color,
-                      icon:        icon,
-                      isCurrent:   _currentTest == def.id,
-                      pulseCtrl:   _pulseCtrl,
+                      progress: p,
+                      color: color,
+                      icon: icon,
+                      isCurrent: _currentTest == def.id,
+                      pulseCtrl: _pulseCtrl,
                     ),
                   );
                 }).toList(),
@@ -373,12 +381,12 @@ class _RunningScreenState extends State<RunningScreen>
 // ── Progress tile (unchanged from original) ───────────────────────────────────
 
 class _TestProgressTile extends StatelessWidget {
-  final TestDefinition      definition;
-  final String              displayName;
-  final TestProgress        progress;
-  final Color               color;
-  final IconData            icon;
-  final bool                isCurrent;
+  final TestDefinition definition;
+  final String displayName;
+  final TestProgress progress;
+  final Color color;
+  final IconData icon;
+  final bool isCurrent;
   final AnimationController pulseCtrl;
 
   const _TestProgressTile({
@@ -397,14 +405,15 @@ class _TestProgressTile extends StatelessWidget {
 
     Widget trailing;
     if (st == TestStatus.done) {
-      trailing =
-      const Icon(Icons.check_circle, color: AppTheme.good, size: 22);
+      trailing = const Icon(Icons.check_circle, color: AppTheme.good, size: 22);
     } else if (st == TestStatus.failed) {
-      trailing =
-      const Icon(Icons.error_outline, color: AppTheme.bad, size: 22);
+      trailing = const Icon(Icons.error_outline, color: AppTheme.bad, size: 22);
     } else if (st == TestStatus.skipped) {
-      trailing = const Icon(Icons.remove_circle_outline,
-          color: AppTheme.textDim, size: 22);
+      trailing = const Icon(
+        Icons.remove_circle_outline,
+        color: AppTheme.textDim,
+        size: 22,
+      );
     } else if (st == TestStatus.running) {
       trailing = AnimatedBuilder(
         animation: pulseCtrl,
@@ -491,10 +500,9 @@ class _TestProgressTile extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(2),
                     child: LinearProgressIndicator(
-                      value:           progress.fraction,
+                      value: progress.fraction,
                       backgroundColor: AppTheme.border,
-                      valueColor:
-                      AlwaysStoppedAnimation<Color>(color),
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
                       minHeight: 2,
                     ),
                   ),

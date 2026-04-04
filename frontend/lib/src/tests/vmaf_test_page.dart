@@ -48,19 +48,18 @@ enum _VmafState { idle, recording, done }
 
 class _VmafTestPageState extends State<VmafTestPage>
     with TickerProviderStateMixin {
-
   late VideoPlayerController _player;
-  bool _playerReady  = false;
+  bool _playerReady = false;
   bool _videoVisible = false;
   bool _isFullscreen = false;
 
-  _VmafState _state     = _VmafState.idle;
-  String     _statusMsg = 'Getting ready…';
-  String?    _errorMsg;
+  _VmafState _state = _VmafState.idle;
+  String _statusMsg = 'Getting ready…';
+  String? _errorMsg;
 
   late AnimationController _pulseCtrl;
 
-  static const _recordingWarmup   = Duration(milliseconds: 2500);
+  static const _recordingWarmup = Duration(milliseconds: 2500);
   static const _orientationSettle = Duration(milliseconds: 1200);
 
   String get _apiBase => AppConfig.apiBaseUrl;
@@ -71,8 +70,9 @@ class _VmafTestPageState extends State<VmafTestPage>
   void initState() {
     super.initState();
     _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
-      ..repeat(reverse: true);
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
     _initPlayer();
   }
 
@@ -93,23 +93,26 @@ class _VmafTestPageState extends State<VmafTestPage>
       if (mounted) {
         setState(() {
           _playerReady = true;
-          _statusMsg   = 'Starting recording…';
+          _statusMsg = 'Starting recording…';
         });
         // Auto-start immediately — no user tap required.
         _startRecording();
       }
     } catch (e) {
       if (mounted) {
-        setState(() =>
-        _statusMsg = 'Could not load the video clip. Please try again.');
+        setState(
+          () => _statusMsg = 'Could not load the video clip. Please try again.',
+        );
       }
       widget.onProgressUpdate('Video test failed', 1.0);
-      widget.onResultReady(TestResult(
-        id:           TestId.vmaf,
-        status:       TestStatus.failed,
-        errorMessage: 'Video failed to load: $e',
-        completedAt:  DateTime.now(),
-      ));
+      widget.onResultReady(
+        TestResult(
+          id: TestId.vmaf,
+          status: TestStatus.failed,
+          errorMessage: 'Video failed to load: $e',
+          completedAt: DateTime.now(),
+        ),
+      );
     }
   }
 
@@ -121,10 +124,14 @@ class _VmafTestPageState extends State<VmafTestPage>
       DeviceOrientation.landscapeRight,
     ]);
     await SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.immersiveSticky, overlays: []);
+      SystemUiMode.immersiveSticky,
+      overlays: [],
+    );
     await Future.delayed(const Duration(milliseconds: 600));
     await SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.immersiveSticky, overlays: []);
+      SystemUiMode.immersiveSticky,
+      overlays: [],
+    );
     setState(() {
       _videoVisible = false;
       _isFullscreen = true;
@@ -133,10 +140,13 @@ class _VmafTestPageState extends State<VmafTestPage>
   }
 
   Future<void> _exitFullscreen() async {
-    await SystemChrome.setPreferredOrientations(
-        [DeviceOrientation.portraitUp]);
+    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    if (mounted) setState(() { _isFullscreen = false; _videoVisible = false; });
+    if (mounted)
+      setState(() {
+        _isFullscreen = false;
+        _videoVisible = false;
+      });
     await Future.delayed(const Duration(milliseconds: 500));
   }
 
@@ -158,7 +168,12 @@ class _VmafTestPageState extends State<VmafTestPage>
     while (stable < 2) {
       await Future.delayed(const Duration(milliseconds: 300));
       final size = await file.length();
-      if (size == prev && size > 0) { stable++; } else { stable = 0; prev = size; }
+      if (size == prev && size > 0) {
+        stable++;
+      } else {
+        stable = 0;
+        prev = size;
+      }
     }
     await Future.delayed(const Duration(milliseconds: 500));
   }
@@ -169,28 +184,31 @@ class _VmafTestPageState extends State<VmafTestPage>
     if (!_playerReady || _state != _VmafState.idle) return;
 
     setState(() {
-      _state     = _VmafState.recording;
+      _state = _VmafState.recording;
       _statusMsg = 'Starting recording…';
-      _errorMsg  = null;
+      _errorMsg = null;
     });
 
     try {
       await _enterFullscreen();
 
       // Triggers the OS share / screen-recording permission sheet.
-      final started =
-      await FlutterScreenRecording.startRecordScreen('vmaf_test');
+      final started = await FlutterScreenRecording.startRecordScreen(
+        'vmaf_test',
+      );
 
       if (!started) {
         // Permission denied — report failure and pop back automatically.
         await _exitFullscreen();
         widget.onProgressUpdate('Video test failed', 1.0);
-        widget.onResultReady(TestResult(
-          id:           TestId.vmaf,
-          status:       TestStatus.failed,
-          errorMessage: 'Screen recording permission was not granted.',
-          completedAt:  DateTime.now(),
-        ));
+        widget.onResultReady(
+          TestResult(
+            id: TestId.vmaf,
+            status: TestStatus.failed,
+            errorMessage: 'Screen recording permission was not granted.',
+            completedAt: DateTime.now(),
+          ),
+        );
         _popWithPlaceholder(failed: true);
         return;
       }
@@ -228,17 +246,18 @@ class _VmafTestPageState extends State<VmafTestPage>
 
       // Don't await — this outlives the page.
       _uploadInBackground(path); // ignore: unawaited_futures
-
     } catch (e, st) {
       debugPrint('VMAF error: $e\n$st');
       await _exitFullscreen();
       widget.onProgressUpdate('Video test failed', 1.0);
-      widget.onResultReady(TestResult(
-        id:           TestId.vmaf,
-        status:       TestStatus.failed,
-        errorMessage: e.toString(),
-        completedAt:  DateTime.now(),
-      ));
+      widget.onResultReady(
+        TestResult(
+          id: TestId.vmaf,
+          status: TestStatus.failed,
+          errorMessage: e.toString(),
+          completedAt: DateTime.now(),
+        ),
+      );
       _popWithPlaceholder(failed: true);
     }
   }
@@ -251,15 +270,16 @@ class _VmafTestPageState extends State<VmafTestPage>
     Navigator.of(context).pop(
       failed
           ? TestResult(
-        id:     TestId.vmaf,
-        status: TestStatus.failed,
-        scores: const {'Status': 'Failed'},
-      )
+              id: TestId.vmaf,
+              status: TestStatus.failed,
+              scores: const {'Status': 'Failed'},
+            )
           : TestResult(
-        id:     TestId.vmaf,
-        status: TestStatus.running, // RunningScreen treats this as "pending"
-        scores: const {'Status': 'Uploading in background…'},
-      ),
+              id: TestId.vmaf,
+              status:
+                  TestStatus.running, // RunningScreen treats this as "pending"
+              scores: const {'Status': 'Uploading in background…'},
+            ),
     );
   }
 
@@ -277,25 +297,28 @@ class _VmafTestPageState extends State<VmafTestPage>
       if (parsed != null) return parsed;
     }
 
-    throw Exception(
-      "Unexpected 'vmaf_score' value (${raw.runtimeType}): $raw",
-    );
+    throw Exception("Unexpected 'vmaf_score' value (${raw.runtimeType}): $raw");
   }
 
   Future<void> _uploadInBackground(String path) async {
     try {
-      final request =
-      http.MultipartRequest('POST', Uri.parse('$_apiBase/vmaf/score'));
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_apiBase/vmaf/score'),
+      );
 
       final sessionId = SessionStore.instance.sessionId;
       if (sessionId != null) {
         request.headers['x-session-id'] = sessionId;
       }
 
-      request.files.add(await http.MultipartFile.fromPath(
-        'distorted_video', path,
-        filename: 'distorted_video.mp4',
-      ));
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'distorted_video',
+          path,
+          filename: 'distorted_video.mp4',
+        ),
+      );
 
       final streamed = await request.send().timeout(
         const Duration(minutes: 10),
@@ -317,20 +340,24 @@ class _VmafTestPageState extends State<VmafTestPage>
 
       final score = _parseVmafScore(data);
       widget.onProgressUpdate('Video test complete', 1.0);
-      widget.onResultReady(TestResult(
-        id:          TestId.vmaf,
-        status:      TestStatus.done,
-        scores:      {'Video Quality Score': score.toStringAsFixed(2)},
-        completedAt: DateTime.now(),
-      ));
+      widget.onResultReady(
+        TestResult(
+          id: TestId.vmaf,
+          status: TestStatus.done,
+          scores: {'Video Quality Score': score.toStringAsFixed(2)},
+          completedAt: DateTime.now(),
+        ),
+      );
     } catch (e) {
       widget.onProgressUpdate('Video test failed', 1.0);
-      widget.onResultReady(TestResult(
-        id:           TestId.vmaf,
-        status:       TestStatus.failed,
-        errorMessage: e.toString(),
-        completedAt:  DateTime.now(),
-      ));
+      widget.onResultReady(
+        TestResult(
+          id: TestId.vmaf,
+          status: TestStatus.failed,
+          errorMessage: e.toString(),
+          completedAt: DateTime.now(),
+        ),
+      );
     }
   }
 
@@ -342,17 +369,19 @@ class _VmafTestPageState extends State<VmafTestPage>
     if (_isFullscreen) {
       return Scaffold(
         backgroundColor: Colors.black,
-        body: Stack(children: [
-          if (_playerReady)
-            Center(
-              child: AspectRatio(
-                aspectRatio: _player.value.aspectRatio,
-                child: VideoPlayer(_player),
+        body: Stack(
+          children: [
+            if (_playerReady)
+              Center(
+                child: AspectRatio(
+                  aspectRatio: _player.value.aspectRatio,
+                  child: VideoPlayer(_player),
+                ),
               ),
-            ),
-          if (!_videoVisible)
-            const Positioned.fill(child: ColoredBox(color: Colors.black)),
-        ]),
+            if (!_videoVisible)
+              const Positioned.fill(child: ColoredBox(color: Colors.black)),
+          ],
+        ),
       );
     }
 
@@ -375,21 +404,29 @@ class _VmafTestPageState extends State<VmafTestPage>
                       shape: BoxShape.circle,
                       color: AppTheme.vmafColor.withOpacity(0.12),
                       border: Border.all(
-                          color: AppTheme.vmafColor.withOpacity(0.3)),
+                        color: AppTheme.vmafColor.withOpacity(0.3),
+                      ),
                     ),
-                    child: const Icon(Icons.videocam_outlined,
-                        color: AppTheme.vmafColor, size: 28),
+                    child: const Icon(
+                      Icons.videocam_outlined,
+                      color: AppTheme.vmafColor,
+                      size: 28,
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('Video Test',
-                      style: TextStyle(
-                          color: AppTheme.textPri,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800)),
+                  const Text(
+                    'Video Test',
+                    style: TextStyle(
+                      color: AppTheme.textPri,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   const SizedBox(height: 6),
-                  const Text('Checking your screen quality',
-                      style: TextStyle(
-                          color: AppTheme.textSec, fontSize: 13)),
+                  const Text(
+                    'Checking your screen quality',
+                    style: TextStyle(color: AppTheme.textSec, fontSize: 13),
+                  ),
                   const SizedBox(height: 36),
 
                   // ── Pulse / record ring ────────────────────────────────
@@ -404,18 +441,22 @@ class _VmafTestPageState extends State<VmafTestPage>
                         border: Border.all(
                           color: _state == _VmafState.recording
                               ? AppTheme.bad.withOpacity(
-                              0.4 + 0.6 * _pulseCtrl.value)
+                                  0.4 + 0.6 * _pulseCtrl.value,
+                                )
                               : AppTheme.vmafColor.withOpacity(0.25),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: (_state == _VmafState.recording
-                                ? AppTheme.bad
-                                : AppTheme.vmafColor)
-                                .withOpacity(_state == _VmafState.recording
-                                ? 0.10 + 0.15 * _pulseCtrl.value
-                                : 0.05),
+                            color:
+                                (_state == _VmafState.recording
+                                        ? AppTheme.bad
+                                        : AppTheme.vmafColor)
+                                    .withOpacity(
+                                      _state == _VmafState.recording
+                                          ? 0.10 + 0.15 * _pulseCtrl.value
+                                          : 0.05,
+                                    ),
                             blurRadius: 32,
                             spreadRadius: 4,
                           ),
@@ -451,8 +492,6 @@ class _VmafTestPageState extends State<VmafTestPage>
                       ),
                     ),
                   ),
-
-
                 ],
               ),
             ),
