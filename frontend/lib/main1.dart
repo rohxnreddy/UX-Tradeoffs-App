@@ -13,6 +13,8 @@ import 'src/questionnaire/questionnaire_screen.dart';
 import 'src/home/home_screen.dart';
 import 'src/runner/running_screen.dart';
 import 'src/results/results_screen.dart';
+import 'src/results/history_screen.dart';
+import 'src/services/history_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +39,7 @@ class UxTradeoffApp extends StatelessWidget {
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
-enum _AppPage { splash, login, questionnaire, home, running, results }
+enum _AppPage { splash, login, questionnaire, home, running, results, history }
 
 class _AppRouter extends StatefulWidget {
   const _AppRouter();
@@ -50,6 +52,7 @@ class _AppRouterState extends State<_AppRouter> {
   _AppPage         _page    = _AppPage.splash;
   List<TestId>     _selected = [];
   List<TestResult> _results  = [];
+  bool             _resultsFromHistory = false;
 
   void _go(_AppPage p) => setState(() => _page = p);
 
@@ -105,14 +108,29 @@ class _AppRouterState extends State<_AppRouter> {
             await SessionStore.instance.clear();
             _go(_AppPage.login);
           },
+          onShowHistory: () => _go(_AppPage.history),
+        );
+
+      case _AppPage.history:
+        return HistoryScreen(
+          onBack: () => _go(_AppPage.home),
+          onSelectRun: (results) {
+            setState(() {
+              _results = results;
+              _resultsFromHistory = true;
+              _page = _AppPage.results;
+            });
+          },
         );
 
       case _AppPage.running:
         return RunningScreen(
           selectedTests: _selected,
-          onDone: (results) {
+          onDone: (results) async {
+            await HistoryService.instance.saveRun(results);
             setState(() {
               _results = results;
+              _resultsFromHistory = false;
               _page    = _AppPage.results;
             });
           },
@@ -120,8 +138,9 @@ class _AppRouterState extends State<_AppRouter> {
 
       case _AppPage.results:
         return ResultsScreen(
-          results:    _results,
-          onRunAgain: () => _go(_AppPage.home),
+          results:     _results,
+          buttonLabel: _resultsFromHistory ? 'Go Back' : 'Go to Home',
+          onBack:      () => _go(_resultsFromHistory ? _AppPage.history : _AppPage.home),
         );
     }
   }

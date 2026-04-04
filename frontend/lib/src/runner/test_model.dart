@@ -52,7 +52,7 @@ const List<TestDefinition> allTests = [
     title:            'Battery Load',
     subtitle:         'Drain score under stress',
     iconPath:         'battery_charging_full',
-    estimatedSeconds: 60,
+    estimatedSeconds: 45,
   ),
 ];
 
@@ -87,5 +87,60 @@ class TestResult {
         scores:       scores       ?? this.scores,
         errorMessage: errorMessage ?? this.errorMessage,
         completedAt:  completedAt  ?? this.completedAt,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id':           id.name,
+        'status':       status.name,
+        'scores':       scores,
+        'errorMessage': errorMessage,
+        'completedAt':  completedAt?.toIso8601String(),
+      };
+
+  factory TestResult.fromJson(Map<String, dynamic> json) => TestResult(
+        id:           TestId.values.byName(json['id']),
+        status:       TestStatus.values.byName(json['status']),
+        scores:       json['scores'] as Map<String, dynamic>,
+        errorMessage: json['errorMessage'],
+        completedAt:  json['completedAt'] != null
+            ? DateTime.parse(json['completedAt'])
+            : null,
+      );
+}
+
+// ── Test Run (A collection of test results) ───────────────────────────────
+
+class TestRun {
+  final String           id;
+  final DateTime         timestamp;
+  final List<TestResult> results;
+
+  const TestRun({
+    required this.id,
+    required this.timestamp,
+    required this.results,
+  });
+
+  int get passCount =>
+      results.where((r) => r.status == TestStatus.done).length;
+
+  int get failCount =>
+      results.where((r) => r.status == TestStatus.failed).length;
+
+  int get skipCount =>
+      results.where((r) => r.status == TestStatus.skipped).length;
+
+  Map<String, dynamic> toJson() => {
+        'id':        id,
+        'timestamp': timestamp.toIso8601String(),
+        'results':   results.map((r) => r.toJson()).toList(),
+      };
+
+  factory TestRun.fromJson(Map<String, dynamic> json) => TestRun(
+        id:        json['id'],
+        timestamp: DateTime.parse(json['timestamp']),
+        results:   (json['results'] as List)
+            .map((r) => TestResult.fromJson(r))
+            .toList(),
       );
 }

@@ -5,12 +5,14 @@ import '../runner/test_model.dart';
 
 class ResultsScreen extends StatefulWidget {
   final List<TestResult> results;
-  final VoidCallback onRunAgain;
+  final VoidCallback onBack;
+  final String buttonLabel;
 
   const ResultsScreen({
     super.key,
     required this.results,
-    required this.onRunAgain,
+    required this.onBack,
+    this.buttonLabel = 'Go to Home',
   });
 
   @override
@@ -176,11 +178,10 @@ class _ResultsScreenState extends State<ResultsScreen>
                 ),
               ),
 
-              // Run again
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                 child: GestureDetector(
-                  onTap: widget.onRunAgain,
+                  onTap: widget.onBack,
                   child: Container(
                     height: 52,
                     decoration: BoxDecoration(
@@ -188,15 +189,20 @@ class _ResultsScreenState extends State<ResultsScreen>
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: AppTheme.border),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.replay_rounded,
-                            color: AppTheme.textSec, size: 20),
-                        SizedBox(width: 8),
+                        Icon(
+                          widget.buttonLabel == 'Go Back'
+                              ? Icons.arrow_back_rounded
+                              : Icons.home_rounded,
+                          color: AppTheme.textSec,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
                         Text(
-                          'Run Again',
-                          style: TextStyle(
+                          widget.buttonLabel,
+                          style: const TextStyle(
                             color: AppTheme.textSec,
                             fontWeight: FontWeight.w600,
                             fontSize: 15,

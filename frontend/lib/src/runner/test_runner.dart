@@ -79,7 +79,7 @@ class BatteryRunner {
           .catchError((_) => http.Response('', 599));
     });
 
-    const totalSeconds = 60;
+    const totalSeconds = 45;
     const stepSeconds  = 5;
     const steps        = totalSeconds ~/ stepSeconds;
 

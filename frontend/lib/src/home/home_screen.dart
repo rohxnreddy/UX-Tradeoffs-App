@@ -7,7 +7,14 @@ import '../runner/test_model.dart';
 class HomeScreen extends StatefulWidget {
   final void Function(List<TestId> selected) onStart;
   final VoidCallback onLogout;
-  const HomeScreen({super.key, required this.onStart, required this.onLogout});
+  final VoidCallback onShowHistory;
+
+  const HomeScreen({
+    super.key,
+    required this.onStart,
+    required this.onLogout,
+    required this.onShowHistory,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -103,9 +110,17 @@ class _HomeScreenState extends State<HomeScreen>
                         ],
                       ),
                     ),
+                    IconButton(
+                      onPressed: widget.onShowHistory,
+                      icon: const Icon(Icons.history_rounded,
+                          color: AppTheme.textPri, size: 24),
+                    ),
+                    const SizedBox(width: 8),
                     PopupMenuButton<String>(
                       onSelected: (val) {
-                        if (val == 'logout') {
+                        if (val == 'profile') {
+                          _showProfileInfo(context);
+                        } else if (val == 'logout') {
                           widget.onLogout();
                         }
                       },
@@ -157,6 +172,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                 ),
               ),
+
 
               const SizedBox(height: 28),
 
@@ -264,6 +280,80 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showProfileInfo(BuildContext context) {
+    final store = SessionStore.instance;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.fromLTRB(28, 16, 28, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                if (store.googlePhotoUrl != null)
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundImage: NetworkImage(store.googlePhotoUrl!),
+                  )
+                else
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppTheme.surface,
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: const Icon(Icons.person, color: AppTheme.textSec, size: 28),
+                  ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        store.googleDisplayName ?? 'Tester',
+                        style: const TextStyle(
+                          color: AppTheme.textPri,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        store.googleEmail ?? 'No email available',
+                        style: const TextStyle(
+                          color: AppTheme.textSec,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );

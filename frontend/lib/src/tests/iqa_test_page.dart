@@ -338,10 +338,7 @@ class _IqaTestPageState extends State<IqaTestPage>
       final b     = (r['brisque'] as num?)?.toDouble() ?? 0;
       final n     = (r['niqe']    as num?)?.toDouble() ?? 0;
       final piqe  = (r['piqe']    as num?)?.toDouble() ?? 0;
-      scores['$label Sharpness']   = b.toStringAsFixed(2);
-      scores['$label Naturalness'] = n.toStringAsFixed(2);
-      scores['$label Clarity']     = piqe.toStringAsFixed(2);
-      scores['$label Score']   =
+      scores['$label Score'] =
           _computeCDI(brisque: b, niqe: n, piqe: piqe).toStringAsFixed(1);
     }
     Navigator.of(context).pop(TestResult(
