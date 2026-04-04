@@ -76,13 +76,19 @@ class BatteryRunner {
     Timer? netTimer;
     netTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
       http.get(Uri.parse('https://speed.hetzner.de/1MB.bin'))
-          .catchError((_) {});
+          .catchError((_) => http.Response('', 599));
     });
 
-    for (int i = 0; i < 9; i++) {
-      await Future.delayed(const Duration(seconds: 5));
-      _emit('Stress running… ${(i + 1) * 5}s / 45s',
-          0.10 + 0.80 * ((i + 1) / 9));
+    const totalSeconds = 60;
+    const stepSeconds  = 5;
+    const steps        = totalSeconds ~/ stepSeconds;
+
+    for (int i = 0; i < steps; i++) {
+      await Future.delayed(const Duration(seconds: stepSeconds));
+      _emit(
+        'Stress running… ${(i + 1) * stepSeconds}s / ${totalSeconds}s',
+        0.10 + 0.80 * ((i + 1) / steps),
+      );
     }
 
     netTimer.cancel();

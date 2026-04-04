@@ -159,17 +159,20 @@ class _RunningScreenState extends State<RunningScreen>
     // All done with foreground tests
     if (!mounted) return;
 
-    // If VMAF is uploading in background, wait for it before showing Results.
-    if (_vmafCompleter != null && !_vmafCompleter!.isCompleted) {
-      setState(() {
-        _overallMsg = 'Finishing video upload…';
-        _progress[TestId.vmaf] = TestProgress(
-          testId:   TestId.vmaf,
-          status:   TestStatus.running,
-          message:  'Uploading in background…',
-          fraction: 0.85,
-        );
-      });
+    // VMAF uploads in the background; always patch the placeholder before Results.
+    // Important: the upload may finish *early* while other tests are still running.
+    if (_vmafCompleter != null) {
+      if (!_vmafCompleter!.isCompleted) {
+        setState(() {
+          _overallMsg = 'Finishing video upload…';
+          _progress[TestId.vmaf] = TestProgress(
+            testId:   TestId.vmaf,
+            status:   TestStatus.running,
+            message:  'Uploading in background…',
+            fraction: 0.85,
+          );
+        });
+      }
 
       final vmafResult = await _vmafCompleter!.future;
 
