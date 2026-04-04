@@ -227,55 +227,144 @@ class _LoginScreenState extends State<LoginScreen>
       backgroundColor: AppTheme.bg,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
       builder: (context) {
         return DraggableScrollableSheet(
           expand: false,
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
+          initialChildSize: 0.75,
+          maxChildSize: 0.95,
           builder: (context, scrollController) {
             return Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              padding: const EdgeInsets.fromLTRB(28, 16, 28, 0),
               child: Column(
                 children: [
+                  // Handle indicator
                   Container(
-                    width: 40,
-                    height: 4,
+                    width: 48,
+                    height: 5,
                     decoration: BoxDecoration(
                       color: AppTheme.border,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(2.5),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
+
+                  // Header
                   const Text(
-                    'Privacy Policy',
+                    'Participant Information and\nData Use Agreement',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppTheme.textPri,
-                      fontSize: 22,
+                      fontSize: 20,
                       fontWeight: FontWeight.w800,
+                      height: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Phone Benchmarking Study',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppTheme.accent,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Content
                   Expanded(
                     child: ListView(
                       controller: scrollController,
-                      children: const [
-                        Text(
-                          '1. Data Collection\n'
-                          'We collect device metadata such as model, brand, OS version, and network performance indicators. We do not inspect personal files or communications.\n\n'
-                          '2. Data Usage\n'
-                          'Your data is securely stored and exclusively utilized to measure network and device quality. We do not sell your data to third parties.\n\n'
-                          '3. Account Identity\n'
-                          'We associate your test results with your Google Sign-In identity to maintain a continuous record of your device performance.\n\n'
-                          '4. Revocation\n'
-                          'You may log out at any time to halt the collection and syncing of data for this session.\n',
-                          style: TextStyle(
-                            color: AppTheme.textSec,
-                            fontSize: 14,
-                            height: 1.6,
-                          ),
+                      physics: const BouncingScrollPhysics(),
+                      children: [
+                        _PolicySection(
+                          title: '1. Purpose of the Study',
+                          content: 'This study collects performance data from smartphones to understand how devices perform under real-world conditions, especially across older and used phones. The findings will be used for academic research and may be published in anonymised form.',
                         ),
+                        _PolicySection(
+                          title: '2. What Data We Collect',
+                          content: 'The app will collect the following types of data:',
+                          bullets: [
+                            'Device information: model, manufacturer, OS version, hardware specifications',
+                            'Performance metrics: audio/video playback quality, speech clarity, battery usage, network latency/throughput',
+                            'Coarse location (city/region level) to understand geographic variation in ownership and performance',
+                            'App interaction data: timestamps, test completion status',
+                            'Limited system logs required to compute the above metrics',
+                          ],
+                        ),
+                        _PolicySection(
+                          title: 'We do not collect:',
+                          bullets: [
+                            'personal files (photos, videos, documents)',
+                            'contact lists, messages, or call logs',
+                            'precise, continuous location tracking beyond what is required for the study',
+                            'personally identifiable information unless explicitly stated',
+                          ],
+                        ),
+                        _PolicySection(
+                          title: '3. How Data Is Collected',
+                          bullets: [
+                            'Data is collected only when the benchmarking app is actively used',
+                            'Location is captured only at specific points during testing',
+                            'No background data collection occurs outside test sessions',
+                            'The app does not access unrelated sensors or data sources',
+                          ],
+                        ),
+                        _PolicySection(
+                          title: '4. Data Storage and Security',
+                          bullets: [
+                            'Data is stored on secure servers maintained by BITS Pilani Hyderabad Campus',
+                            'Data is transmitted using encrypted channels (HTTPS)',
+                            'Access is restricted to authorised members of the research team',
+                            'Data is de-identified at the point of storage wherever possible',
+                          ],
+                        ),
+                        _PolicySection(
+                          title: '5. How the Data Will Be Used',
+                          content: 'Your data will be used for analysing smartphone performance, identifying patterns in device degradation, and publishing research papers.',
+                          footer: 'All published results will be aggregated and anonymised. No individual user will be identifiable.',
+                        ),
+                        _PolicySection(
+                          title: '6. Data Sharing and Dataset Release',
+                          bullets: [
+                            'A de-identified version of the dataset may be released for research purposes',
+                            'The dataset will be shared under a non-commercial research licence',
+                            'No personally identifiable information will be included',
+                            'Location data, if shared, will be coarsened to prevent re-identification',
+                          ],
+                        ),
+                        _PolicySection(
+                          title: '7. Who Has Access to the Data',
+                          content: 'Access is limited to primary investigators and authorised research staff. Institutional review bodies may audit if required.',
+                          footer: 'No commercial entities will have access to raw data.',
+                        ),
+                        _PolicySection(
+                          title: '8. Data Retention',
+                          bullets: [
+                            'Data will be stored for up to 5 years for research purposes',
+                            'After this period, data will be deleted or retained only in fully anonymised form',
+                          ],
+                        ),
+                        _PolicySection(
+                          title: '9. Voluntary Participation',
+                          bullets: [
+                            'Your participation is voluntary; stop using the app at any time',
+                            'You may request deletion of your data by contacting the research team',
+                          ],
+                        ),
+                        _PolicySection(
+                          title: '10. Contact Information',
+                          content: 'For questions or data deletion requests, please contact:',
+                          footer: 'Prof. Dipanjan Chakraborty\ndipanjan@hyderabad.bits-pilani.ac.in\nBITS Pilani, Hyderabad Campus',
+                        ),
+                        _PolicySection(
+                          title: '11. Consent',
+                          content: 'By using this app, you confirm that you have read and understood this agreement and consent to the collection and use of your data as described above.',
+                        ),
+                        const SizedBox(height: 60),
                       ],
                     ),
                   ),
@@ -285,6 +374,83 @@ class _LoginScreenState extends State<LoginScreen>
           },
         );
       },
+    );
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+class _PolicySection extends StatelessWidget {
+  final String title;
+  final String? content;
+  final List<String>? bullets;
+  final String? footer;
+
+  const _PolicySection({
+    required this.title,
+    this.content,
+    this.bullets,
+    this.footer,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 28.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppTheme.textPri,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (content != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              content!,
+              style: const TextStyle(
+                color: AppTheme.textSec,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+          ],
+          if (bullets != null) ...[
+            const SizedBox(height: 10),
+            ...bullets!.map((b) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6.0, left: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('• ', style: TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold)),
+                      Expanded(
+                        child: Text(
+                          b,
+                          style: const TextStyle(color: AppTheme.textSec, fontSize: 13, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+          if (footer != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              footer!,
+              style: const TextStyle(
+                color: AppTheme.textSec,
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

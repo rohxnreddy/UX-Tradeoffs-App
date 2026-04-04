@@ -9,10 +9,15 @@ class DeviceMeta(BaseModel):
     user_photo_url: Optional[str] = None
 
     # ── Questionnaire Answers ─────────────────────────────────────────────────
-    device_usage: Optional[str] = None       # "Media & streaming", "Calls & communication", …
-    network_env: Optional[str] = None        # "Strong Wi-Fi", "4G / LTE cellular", …
-    testing_purpose: Optional[str] = None    # "Personal research", "Academic study", …
-    usage_frequency: Optional[str] = None    # "First time", "Weekly", "Daily / often", …
+    age_group: Optional[str] = None
+    phone_condition: Optional[str] = None
+    phone_duration: Optional[str] = None
+    phone_history: Optional[str] = None
+    primary_usage: Optional[str] = None
+    internet_frequency: Optional[str] = None
+    phone_sharing: Optional[str] = None
+    internet_connection_type: Optional[str] = None
+    phone_acquisition: Optional[str] = None
 
     # ── Device Hardware ───────────────────────────────────────────────────────
     device_model: Optional[str] = None

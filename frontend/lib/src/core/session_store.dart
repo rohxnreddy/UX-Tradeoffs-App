@@ -20,10 +20,15 @@ class SessionStore extends ChangeNotifier {
     googleEmail = prefs.getString('googleEmail');
     googlePhotoUrl = prefs.getString('googlePhotoUrl');
 
-    deviceUsage = prefs.getString('deviceUsage');
-    networkEnv = prefs.getString('networkEnv');
-    testingPurpose = prefs.getString('testingPurpose');
-    usageFrequency = prefs.getString('usageFrequency');
+    ageGroup = prefs.getString('ageGroup');
+    phoneCondition = prefs.getString('phoneCondition');
+    phoneDuration = prefs.getString('phoneDuration');
+    phoneHistory = prefs.getString('phoneHistory');
+    primaryUsage = prefs.getString('primaryUsage');
+    internetFrequency = prefs.getString('internetFrequency');
+    phoneSharing = prefs.getString('phoneSharing');
+    internetConnectionType = prefs.getString('internetConnectionType');
+    phoneAcquisition = prefs.getString('phoneAcquisition');
 
     sessionId = prefs.getString('sessionId');
     notifyListeners();
@@ -63,34 +68,47 @@ class SessionStore extends ChangeNotifier {
 
   // ── Stage 2 : Questionnaire ───────────────────────────────────────────────
 
-  /// Maps to DB column: device_usage
-  String? deviceUsage;
-
-  /// Maps to DB column: network_env
-  String? networkEnv;
-
-  /// Maps to DB column: testing_purpose
-  String? testingPurpose;
-
-  /// Maps to DB column: usage_frequency
-  String? usageFrequency;
+  String? ageGroup;
+  String? phoneCondition;
+  String? phoneDuration;
+  String? phoneHistory;
+  String? primaryUsage;
+  String? internetFrequency;
+  String? phoneSharing;
+  String? internetConnectionType;
+  String? phoneAcquisition;
 
   Future<void> setAnswers({
-    required String usage,
-    required String network,
-    required String purpose,
-    required String frequency,
+    required String pAgeGroup,
+    required String pPhoneCondition,
+    required String pPhoneDuration,
+    required String pPhoneHistory,
+    required String pPrimaryUsage,
+    required String pInternetFrequency,
+    required String pPhoneSharing,
+    required String pInternetConnectionType,
+    required String pPhoneAcquisition,
   }) async {
-    deviceUsage    = usage;
-    networkEnv     = network;
-    testingPurpose = purpose;
-    usageFrequency = frequency;
+    ageGroup = pAgeGroup;
+    phoneCondition = pPhoneCondition;
+    phoneDuration = pPhoneDuration;
+    phoneHistory = pPhoneHistory;
+    primaryUsage = pPrimaryUsage;
+    internetFrequency = pInternetFrequency;
+    phoneSharing = pPhoneSharing;
+    internetConnectionType = pInternetConnectionType;
+    phoneAcquisition = pPhoneAcquisition;
     
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('deviceUsage', usage);
-    await prefs.setString('networkEnv', network);
-    await prefs.setString('testingPurpose', purpose);
-    await prefs.setString('usageFrequency', frequency);
+    await prefs.setString('ageGroup', pAgeGroup);
+    await prefs.setString('phoneCondition', pPhoneCondition);
+    await prefs.setString('phoneDuration', pPhoneDuration);
+    await prefs.setString('phoneHistory', pPhoneHistory);
+    await prefs.setString('primaryUsage', pPrimaryUsage);
+    await prefs.setString('internetFrequency', pInternetFrequency);
+    await prefs.setString('phoneSharing', pPhoneSharing);
+    await prefs.setString('internetConnectionType', pInternetConnectionType);
+    await prefs.setString('phoneAcquisition', pPhoneAcquisition);
     
     notifyListeners();
   }
@@ -111,8 +129,10 @@ class SessionStore extends ChangeNotifier {
   // ── Computed state ────────────────────────────────────────────────────────
 
   bool get isLoggedIn  => googleEmail != null;
-  bool get hasAnswered => deviceUsage != null && networkEnv != null &&
-      testingPurpose != null && usageFrequency != null;
+  bool get hasAnswered => ageGroup != null && phoneCondition != null &&
+      phoneDuration != null && phoneHistory != null && primaryUsage != null &&
+      internetFrequency != null && phoneSharing != null &&
+      internetConnectionType != null && phoneAcquisition != null;
   bool get hasSession  => sessionId != null;
 
   /// True once sign-in AND all four questionnaire answers are present.
@@ -122,7 +142,8 @@ class SessionStore extends ChangeNotifier {
 
   Future<void> clear() async {
     googleDisplayName = googleEmail = googlePhotoUrl = null;
-    deviceUsage = networkEnv = testingPurpose = usageFrequency = null;
+    ageGroup = phoneCondition = phoneDuration = phoneHistory = primaryUsage = 
+        internetFrequency = phoneSharing = internetConnectionType = phoneAcquisition = null;
     sessionId   = null;
     
     final prefs = await SharedPreferences.getInstance();
