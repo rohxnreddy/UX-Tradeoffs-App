@@ -20,6 +20,13 @@ class TestDefinition {
 
 const List<TestDefinition> allTests = [
   TestDefinition(
+    id:               TestId.vmaf,
+    title:            'Video Quality',
+    subtitle:         'Video experience assessment',
+    iconPath:         'videocam',
+    estimatedSeconds: 30,
+  ),
+  TestDefinition(
     id:               TestId.peaq,
     title:            'PEAQ',
     subtitle:         'Audio perceptual quality',
@@ -39,13 +46,6 @@ const List<TestDefinition> allTests = [
     subtitle:         'Image quality assessment',
     iconPath:         'image',
     estimatedSeconds: 20,
-  ),
-  TestDefinition(
-    id:               TestId.vmaf,
-    title:            'VMAF',
-    subtitle:         'Video quality assessment',
-    iconPath:         'videocam',
-    estimatedSeconds: 30,
   ),
   TestDefinition(
     id:               TestId.battery,

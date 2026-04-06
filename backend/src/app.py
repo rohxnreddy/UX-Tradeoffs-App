@@ -137,6 +137,23 @@ async def stream_pesq_audio():
 
 # ─── VMAF ─────────────────────────────────────────────────────────────────────
 
+async def _bg_vmaf_task(record_id: UUID, file_path: Path):
+    """Background task to compute VMAF and update the database."""
+    try:
+        score = await run_in_threadpool(compute_vmaf, file_path)
+        await db.update_vmaf_result(
+            record_id=record_id,
+            status="completed",
+            vmaf_score=score,
+            raw_output={"vmaf_score": score},
+        )
+    except Exception as e:
+        print(f"Background VMAF task error: {e}")
+        await db.update_vmaf_result(record_id=record_id, status="failed")
+    finally:
+        file_path.unlink(missing_ok=True)
+
+
 @app.post("/vmaf/score")
 async def calculate_vmaf(
     distorted_video: UploadFile = File(...),
@@ -153,20 +170,32 @@ async def calculate_vmaf(
 
     with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(contents)
-        original_path = Path(tmp.name)
+        temp_path = Path(tmp.name)
 
-    try:
-        score = await run_in_threadpool(compute_vmaf, original_path)
-        result = {"vmaf_score": score}
-        record_id = await db.insert_vmaf_result(
-            session_id=session_id,
-            filename=filename,
-            file_size_bytes=len(contents),
-            result=result,
-        )
-        return {**result, "record_id": str(record_id)}
-    finally:
-        original_path.unlink(missing_ok=True)
+    # 1. Create a shell record
+    record_id = await db.insert_vmaf_result(
+        session_id=session_id,
+        filename=filename,
+        file_size_bytes=len(contents),
+        status="processing",
+    )
+
+    # 2. Fire-and-forget the background calculation
+    asyncio.create_task(_bg_vmaf_task(record_id, temp_path))
+
+    return {
+        "status":    "processing",
+        "record_id": str(record_id),
+        "message":   "VMAF calculation started in the background."
+    }
+
+
+@app.get("/vmaf/status/{record_id}")
+async def get_vmaf_status(record_id: UUID):
+    result = await db.get_vmaf_result(record_id)
+    if not result:
+        raise HTTPException(404, "VMAF result not found")
+    return result
 
 
 # ─── PEAQ ─────────────────────────────────────────────────────────────────────

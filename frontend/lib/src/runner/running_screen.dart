@@ -218,6 +218,19 @@ class _RunningScreenState extends State<RunningScreen>
               if (!(_vmafCompleter?.isCompleted ?? true)) {
                 _vmafCompleter!.complete(result);
               }
+              // Immediately update the progress UI once the background result finishes.
+              if (mounted) {
+                setState(() {
+                  _progress[def.id] = TestProgress(
+                    testId: def.id,
+                    status: result.status,
+                    fraction: 1,
+                    message: result.status == TestStatus.done
+                        ? '${_testNames[def.id]} complete'
+                        : 'Failed: ${result.errorMessage}',
+                  );
+                });
+              }
             },
           ),
         );

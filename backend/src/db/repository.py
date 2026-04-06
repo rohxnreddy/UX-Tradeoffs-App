@@ -293,23 +293,53 @@ async def insert_vmaf_result(
     session_id: Optional[UUID],
     filename: Optional[str],
     file_size_bytes: Optional[int],
-    result: dict,
+    status: str = "pending",
 ) -> UUID:
-    """result = {"vmaf_score": float, ...}"""
+    """Insert a shell for the VMAF result which will be updated later."""
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        INSERT INTO vmaf_results (session_id, filename, file_size_bytes, vmaf_score, raw_output)
-        VALUES ($1, $2, $3, $4, $5::jsonb)
+        INSERT INTO vmaf_results (session_id, filename, file_size_bytes, status)
+        VALUES ($1, $2, $3, $4)
         RETURNING id
         """,
         session_id,
         filename,
         file_size_bytes,
-        result.get("vmaf_score"),
-        _jsonb(result),
+        status,
     )
     return row["id"]
+
+
+async def update_vmaf_result(
+    record_id: UUID,
+    status: str,
+    vmaf_score: Optional[float] = None,
+    raw_output: Optional[dict] = None,
+) -> None:
+    """Update an existing VMAF result with the actual score and final status."""
+    pool = await get_pool()
+    await pool.execute(
+        """
+        UPDATE vmaf_results
+        SET status = $2, vmaf_score = $3, raw_output = $4::jsonb
+        WHERE id = $1
+        """,
+        record_id,
+        status,
+        vmaf_score,
+        _jsonb(raw_output) if raw_output else None,
+    )
+
+
+async def get_vmaf_result(record_id: UUID) -> Optional[dict]:
+    """Fetch a VMAF result by its ID to check status/score."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, status, vmaf_score, created_at FROM vmaf_results WHERE id = $1",
+        record_id,
+    )
+    return dict(row) if row else None
 
 
 # ─── 3. PEAQ ──────────────────────────────────────────────────────────────────
