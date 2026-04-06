@@ -1,5 +1,10 @@
 #!/bin/bash
 
+#env loading
+set -a
+source .env
+set +a
+
 # ─── CONFIG ───────────────────────────────────
 APP_MODULE="src.app:app"
 HOST="0.0.0.0"
