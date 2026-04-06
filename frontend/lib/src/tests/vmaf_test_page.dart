@@ -297,7 +297,7 @@ class _VmafTestPageState extends State<VmafTestPage>
       if (parsed != null) return parsed;
     }
 
-    throw Exception("Unexpected 'vmaf_score' value (${raw.runtimeType}): $raw");
+    return 0.0;
   }
 
   Future<void> _uploadInBackground(String path) async {
@@ -321,7 +321,7 @@ class _VmafTestPageState extends State<VmafTestPage>
       );
 
       final streamed = await request.send().timeout(
-        const Duration(minutes: 10),
+        const Duration(minutes: 5),
         onTimeout: () => throw Exception('Upload timed out.'),
       );
       final body = await streamed.stream.bytesToString();
@@ -330,24 +330,59 @@ class _VmafTestPageState extends State<VmafTestPage>
         throw Exception('Server error (${streamed.statusCode}): $body');
       }
 
-      Map<String, dynamic> data;
-      try {
-        data = jsonDecode(body) as Map<String, dynamic>;
-      } catch (e) {
-        final snippet = body.length > 300 ? '${body.substring(0, 300)}…' : body;
-        throw Exception('Invalid JSON response: $e. Body: $snippet');
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      final recordId = data['record_id'];
+
+      if (recordId == null) {
+        throw Exception('No record_id returned from VMAF upload.');
       }
 
-      final score = _parseVmafScore(data);
-      widget.onProgressUpdate('Video test complete', 1.0);
-      widget.onResultReady(
-        TestResult(
-          id: TestId.vmaf,
-          status: TestStatus.done,
-          scores: {'Video Quality Score': score.toStringAsFixed(2)},
-          completedAt: DateTime.now(),
-        ),
-      );
+      // ── Polling Loop ───────────────────────────────────────────────────────
+      bool isDone = false;
+      int attempts = 0;
+      const maxAttempts = 60; // 3 minutes total (3s * 60)
+
+      while (!isDone && attempts < maxAttempts) {
+        attempts++;
+        if (attempts > 1) {
+          await Future.delayed(const Duration(seconds: 3));
+        }
+
+        widget.onProgressUpdate('Processing on server…', 0.80);
+
+        final res = await http.get(
+          Uri.parse('$_apiBase/vmaf/status/$recordId'),
+          headers: sessionId != null ? {'x-session-id': sessionId} : {},
+        );
+
+        if (res.statusCode != 200) {
+          throw Exception('Status check failed (${res.statusCode}): ${res.body}');
+        }
+
+        final statusData = jsonDecode(res.body) as Map<String, dynamic>;
+        final status = statusData['status'];
+
+        if (status == 'completed') {
+          isDone = true;
+          final score = _parseVmafScore(statusData);
+          widget.onProgressUpdate('Video test complete', 1.0);
+          widget.onResultReady(
+            TestResult(
+              id: TestId.vmaf,
+              status: TestStatus.done,
+              scores: {'Video Quality Score': score.toStringAsFixed(2)},
+              completedAt: DateTime.now(),
+            ),
+          );
+        } else if (status == 'failed') {
+          throw Exception('VMAF processing failed on the server.');
+        }
+        // else: still 'processing' or 'pending', loop again.
+      }
+
+      if (!isDone) {
+        throw Exception('VMAF processing timed out.');
+      }
     } catch (e) {
       widget.onProgressUpdate('Video test failed', 1.0);
       widget.onResultReady(

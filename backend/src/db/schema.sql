@@ -148,8 +148,11 @@ CREATE TABLE IF NOT EXISTS vmaf_results (
     filename            TEXT,
     file_size_bytes     BIGINT,
 
-    -- Score
-    vmaf_score          NUMERIC(8,4) NOT NULL,
+    -- Score (NULL until job completes)
+    vmaf_score          NUMERIC(8,4),
+
+    -- Job status: 'pending', 'processing', 'completed', 'failed'
+    status              TEXT        NOT NULL DEFAULT 'pending',
 
     -- Optional: store raw model output for reanalysis
     raw_output          JSONB
