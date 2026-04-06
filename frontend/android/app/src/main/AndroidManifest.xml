@@ -14,7 +14,7 @@
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"/>
 
     <application
-        android:label="frontend"
+        android:label="UX Tradeoffs"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
