@@ -63,6 +63,28 @@ def _float_to_int16(samples: np.ndarray) -> np.ndarray:
     return np.clip(samples * 32768.0, -32768, 32767).astype(np.int16)
 
 
+def align_audio(ref: np.ndarray, deg: np.ndarray) -> np.ndarray:
+    """Align degraded audio to the reference using cross-correlation."""
+    try:
+        from scipy.signal import fftconvolve
+    except ImportError:
+        return deg
+
+    chunk_len = min(len(ref), int(len(ref) * 0.5), 16000 * 3)
+    if chunk_len < 100:
+        return deg
+
+    ref_chunk = ref[:chunk_len]
+    corr = fftconvolve(deg, ref_chunk[::-1], mode="full")
+    delay_samples = int(np.argmax(corr)) - len(ref_chunk) + 1
+
+    if delay_samples > 0:
+        return deg[delay_samples:]
+    if delay_samples < 0:
+        return np.pad(deg, (-delay_samples, 0))
+    return deg
+
+
 def _write_wav_b64(samples_float: np.ndarray, sr: int) -> str:
     """Convert float64 samples to a base64-encoded WAV string."""
     int16_data = _float_to_int16(samples_float)
@@ -106,6 +128,7 @@ def compute_pesq(
     target_sr = 16000
     ref_16k = _resample_to(ref, fs_ref, target_sr)
     deg_16k = _resample_to(deg, fs_deg, target_sr)
+    deg_16k = align_audio(ref_16k, deg_16k)
 
     min_len = min(len(ref_16k), len(deg_16k))
     ref_16k = ref_16k[:min_len]

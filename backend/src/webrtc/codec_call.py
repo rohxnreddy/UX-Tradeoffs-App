@@ -78,6 +78,97 @@ def _float_to_int16(s: np.ndarray) -> np.ndarray:
     return np.clip(s * 32768.0, -32768, 32767).astype(np.int16)
 
 
+def align_audio(ref: np.ndarray, deg: np.ndarray) -> np.ndarray:
+    """Align degraded audio to the reference using cross-correlation."""
+    try:
+        from scipy.signal import fftconvolve
+    except ImportError:
+        return deg
+
+    chunk_len = min(len(ref), int(len(ref) * 0.5), 16000 * 3)
+    if chunk_len < 100:
+        return deg
+
+    ref_chunk = ref[:chunk_len]
+    corr = fftconvolve(deg, ref_chunk[::-1], mode="full")
+    delay_samples = int(np.argmax(corr)) - len(ref_chunk) + 1
+
+    if delay_samples > 0:
+        return deg[delay_samples:]
+    if delay_samples < 0:
+        return np.pad(deg, (-delay_samples, 0))
+    return deg
+
+
+def _score_wideband_pesq(
+    ref_16k: np.ndarray,
+    deg_16k: np.ndarray,
+    *,
+    align: bool = True,
+) -> tuple[float, np.ndarray]:
+    """Score a 16 kHz signal in wideband mode and return the aligned signal."""
+    prepared = align_audio(ref_16k, deg_16k) if align else deg_16k
+    min_len = min(len(ref_16k), len(prepared))
+    ref_trimmed = _float_to_int16(ref_16k[:min_len])
+    deg_trimmed = _float_to_int16(prepared[:min_len])
+    return float(pesq_score(16000, ref_trimmed, deg_trimmed, "wb")), prepared
+
+
+def _score_narrowband_pesq(
+    ref_16k: np.ndarray,
+    deg_16k: np.ndarray,
+    *,
+    align: bool = True,
+) -> tuple[float, np.ndarray]:
+    """Score a 16 kHz signal in narrowband mode by downsampling to 8 kHz."""
+    prepared = align_audio(ref_16k, deg_16k) if align else deg_16k
+    min_len = min(len(ref_16k), len(prepared))
+    ref_trimmed = ref_16k[:min_len]
+    deg_trimmed = prepared[:min_len]
+    nb_len = max(1, int(min_len * 8000 / 16000))
+    ref_8k = resample(ref_trimmed, nb_len)
+    deg_8k = resample(deg_trimmed, nb_len)
+    ref_nb = _float_to_int16(ref_8k)
+    deg_nb = _float_to_int16(deg_8k)
+    return float(pesq_score(8000, ref_nb, deg_nb, "nb")), prepared
+
+
+def _validate_recording_duration(
+    recorded: np.ndarray,
+    reference: np.ndarray,
+    sr: int,
+    *,
+    minimum_fraction: float = 0.8,
+) -> None:
+    """Reject recordings that are far shorter than the reference sample."""
+    recorded_duration = len(recorded) / sr
+    reference_duration = len(reference) / sr
+    if recorded_duration < reference_duration * minimum_fraction:
+        raise RuntimeError(
+            "Recorded clip is too short "
+            f"({recorded_duration:.2f}s vs expected {reference_duration:.2f}s). "
+            "Playback likely interrupted the recording."
+        )
+
+
+def _raise_for_branch_errors(result: dict, expected: dict[str, str]) -> None:
+    """Fail the overall analysis if any required branch failed or is missing."""
+    errors: list[str] = []
+    for key, label in expected.items():
+        branch = result.get(key)
+        if not isinstance(branch, dict):
+            errors.append(f"{label}: missing result")
+            continue
+        if branch.get("error"):
+            errors.append(f"{label}: {branch['error']}")
+            continue
+        if branch.get("pesq_score") is None:
+            errors.append(f"{label}: missing pesq_score")
+
+    if errors:
+        raise RuntimeError("Incomplete codec analysis: " + "; ".join(errors))
+
+
 def encode_decode_opus(input_wav: Path, bitrate: int = 32000) -> Path:
     """
     Encode WAV → Opus → decode back to WAV.
@@ -206,7 +297,6 @@ def make_webrtc_call(
         ref_16k = resample(ref_samples, num)
     else:
         ref_16k = ref_samples
-    ref_int16 = _float_to_int16(ref_16k)
 
     result = {
         "type": "webrtc_codec_call",
@@ -224,13 +314,7 @@ def make_webrtc_call(
             num = int(len(wb_samples) * 16000 / wb_sr)
             wb_samples = resample(wb_samples, num)
 
-        # Trim to match
-        min_len = min(len(ref_16k), len(wb_samples))
-        wb_trimmed = _float_to_int16(wb_samples[:min_len])
-        ref_trimmed_wb = ref_int16[:min_len]
-
-        # PESQ
-        wb_pesq = pesq_score(16000, ref_trimmed_wb, wb_trimmed, "wb")
+        wb_pesq, wb_aligned = _score_wideband_pesq(ref_16k, wb_samples)
 
         result["voip_wideband"] = {
             "pesq_score": round(float(wb_pesq), 3),
@@ -240,7 +324,7 @@ def make_webrtc_call(
             "mode": "VoIP",
             "description": "WebRTC wideband call — Opus codec, 48 kHz, VoIP optimized",
         }
-        result["wb_degraded_audio_b64"] = _write_wav_b64(wb_samples, 16000)
+        result["wb_degraded_audio_b64"] = _write_wav_b64(wb_aligned, 16000)
 
         wb_path.unlink(missing_ok=True)
     except Exception as e:
@@ -256,13 +340,7 @@ def make_webrtc_call(
             num = int(len(nb_samples) * 16000 / nb_sr)
             nb_samples = resample(nb_samples, num)
 
-        # Trim to match
-        min_len = min(len(ref_16k), len(nb_samples))
-        nb_trimmed = _float_to_int16(nb_samples[:min_len])
-        ref_trimmed_nb = ref_int16[:min_len]
-
-        # PESQ
-        nb_pesq = pesq_score(16000, ref_trimmed_nb, nb_trimmed, "wb")
+        nb_pesq, nb_aligned = _score_narrowband_pesq(ref_16k, nb_samples)
 
         result["traditional_narrowband"] = {
             "pesq_score": round(float(nb_pesq), 3),
@@ -272,7 +350,7 @@ def make_webrtc_call(
             "mode": "PSTN",
             "description": "Traditional phone call — G.711 μ-law, 8 kHz narrowband",
         }
-        result["nb_degraded_audio_b64"] = _write_wav_b64(nb_samples, 16000)
+        result["nb_degraded_audio_b64"] = _write_wav_b64(nb_aligned, 16000)
 
         nb_path.unlink(missing_ok=True)
     except Exception as e:
@@ -288,13 +366,7 @@ def make_webrtc_call(
             num = int(len(volte_samples) * 16000 / volte_sr)
             volte_samples = resample(volte_samples, num)
 
-        # Trim to match
-        min_len = min(len(ref_16k), len(volte_samples))
-        volte_trimmed = _float_to_int16(volte_samples[:min_len])
-        ref_trimmed_volte = ref_int16[:min_len]
-
-        # PESQ
-        volte_pesq = pesq_score(16000, ref_trimmed_volte, volte_trimmed, "wb")
+        volte_pesq, volte_aligned = _score_wideband_pesq(ref_16k, volte_samples)
 
         result["volte_wideband"] = {
             "pesq_score": round(float(volte_pesq), 3),
@@ -304,11 +376,20 @@ def make_webrtc_call(
             "mode": "VoLTE",
             "description": "VoLTE call — AMR-WB codec, 16 kHz, 50-7000 Hz bandwidth",
         }
-        result["volte_degraded_audio_b64"] = _write_wav_b64(volte_samples, 16000)
+        result["volte_degraded_audio_b64"] = _write_wav_b64(volte_aligned, 16000)
 
         volte_path.unlink(missing_ok=True)
     except Exception as e:
         result["volte_wideband"] = {"error": str(e)}
+
+    _raise_for_branch_errors(
+        result,
+        {
+            "voip_wideband": "VoIP",
+            "traditional_narrowband": "PSTN",
+            "volte_wideband": "VoLTE",
+        },
+    )
 
     return result
 
@@ -352,7 +433,6 @@ def make_device_webrtc_call(
         ref_16k = resample(ref_samples, num)
     else:
         ref_16k = ref_samples
-    ref_int16 = _float_to_int16(ref_16k)
 
     # Load the phone recording at 16 kHz
     rec_samples, rec_sr = _load_wav(rec_path)
@@ -361,11 +441,13 @@ def make_device_webrtc_call(
         rec_16k = resample(rec_samples, num)
     else:
         rec_16k = rec_samples
+    _validate_recording_duration(rec_16k, ref_16k, 16000)
+    aligned_rec_16k = align_audio(ref_16k, rec_16k)
 
     # Also save the phone recording at 16 kHz as a temp WAV for ffmpeg
     rec_16k_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     rec_16k_path.close()
-    rec_16k_int16 = _float_to_int16(rec_16k)
+    rec_16k_int16 = _float_to_int16(aligned_rec_16k)
     with wave.open(rec_16k_path.name, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
@@ -376,16 +458,16 @@ def make_device_webrtc_call(
         "type": "webrtc_device_call",
         "description": "Phone recording processed through Opus, G.711, and AMR-WB (VoLTE) codecs",
         "reference_audio_b64": _write_wav_b64(ref_16k, 16000),
-        "recorded_audio_b64": _write_wav_b64(rec_16k, 16000),
+        "recorded_audio_b64": _write_wav_b64(aligned_rec_16k, 16000),
     }
 
     # Trim reference and recording to same length
-    min_base = min(len(ref_16k), len(rec_16k))
+    min_base = min(len(ref_16k), len(aligned_rec_16k))
 
     # ── Direct recording score (no codec, just hardware degradation) ──
     try:
-        rec_trimmed = _float_to_int16(rec_16k[:min_base])
-        ref_trimmed = ref_int16[:min_base]
+        rec_trimmed = _float_to_int16(aligned_rec_16k[:min_base])
+        ref_trimmed = _float_to_int16(ref_16k[:min_base])
         direct_pesq = pesq_score(16000, ref_trimmed, rec_trimmed, "wb")
         result["direct_recording"] = {
             "pesq_score": round(float(direct_pesq), 3),
@@ -402,11 +484,7 @@ def make_device_webrtc_call(
             num = int(len(wb_samples) * 16000 / wb_sr)
             wb_samples = resample(wb_samples, num)
 
-        min_len = min(min_base, len(wb_samples))
-        wb_trimmed = _float_to_int16(wb_samples[:min_len])
-        ref_trimmed_wb = ref_int16[:min_len]
-
-        wb_pesq = pesq_score(16000, ref_trimmed_wb, wb_trimmed, "wb")
+        wb_pesq, wb_aligned = _score_wideband_pesq(ref_16k, wb_samples)
 
         result["voip_wideband"] = {
             "pesq_score": round(float(wb_pesq), 3),
@@ -416,7 +494,7 @@ def make_device_webrtc_call(
             "mode": "VoIP",
             "description": "Phone recording → Opus codec → PESQ vs original",
         }
-        result["wb_degraded_audio_b64"] = _write_wav_b64(wb_samples, 16000)
+        result["wb_degraded_audio_b64"] = _write_wav_b64(wb_aligned, 16000)
         wb_path.unlink(missing_ok=True)
     except Exception as e:
         result["voip_wideband"] = {"error": str(e)}
@@ -429,11 +507,7 @@ def make_device_webrtc_call(
             num = int(len(nb_samples) * 16000 / nb_sr)
             nb_samples = resample(nb_samples, num)
 
-        min_len = min(min_base, len(nb_samples))
-        nb_trimmed = _float_to_int16(nb_samples[:min_len])
-        ref_trimmed_nb = ref_int16[:min_len]
-
-        nb_pesq = pesq_score(16000, ref_trimmed_nb, nb_trimmed, "wb")
+        nb_pesq, nb_aligned = _score_narrowband_pesq(ref_16k, nb_samples)
 
         result["traditional_narrowband"] = {
             "pesq_score": round(float(nb_pesq), 3),
@@ -443,7 +517,7 @@ def make_device_webrtc_call(
             "mode": "PSTN",
             "description": "Phone recording → G.711 codec → PESQ vs original",
         }
-        result["nb_degraded_audio_b64"] = _write_wav_b64(nb_samples, 16000)
+        result["nb_degraded_audio_b64"] = _write_wav_b64(nb_aligned, 16000)
         nb_path.unlink(missing_ok=True)
     except Exception as e:
         result["traditional_narrowband"] = {"error": str(e)}
@@ -456,11 +530,7 @@ def make_device_webrtc_call(
             num = int(len(volte_samples) * 16000 / volte_sr)
             volte_samples = resample(volte_samples, num)
 
-        min_len = min(min_base, len(volte_samples))
-        volte_trimmed = _float_to_int16(volte_samples[:min_len])
-        ref_trimmed_volte = ref_int16[:min_len]
-
-        volte_pesq = pesq_score(16000, ref_trimmed_volte, volte_trimmed, "wb")
+        volte_pesq, volte_aligned = _score_wideband_pesq(ref_16k, volte_samples)
 
         result["volte_wideband"] = {
             "pesq_score": round(float(volte_pesq), 3),
@@ -470,10 +540,20 @@ def make_device_webrtc_call(
             "mode": "VoLTE",
             "description": "Phone recording → AMR-WB (VoLTE) → PESQ vs original",
         }
-        result["volte_degraded_audio_b64"] = _write_wav_b64(volte_samples, 16000)
+        result["volte_degraded_audio_b64"] = _write_wav_b64(volte_aligned, 16000)
         volte_path.unlink(missing_ok=True)
     except Exception as e:
         result["volte_wideband"] = {"error": str(e)}
+
+    _raise_for_branch_errors(
+        result,
+        {
+            "direct_recording": "Device hardware",
+            "voip_wideband": "VoIP",
+            "traditional_narrowband": "PSTN",
+            "volte_wideband": "VoLTE",
+        },
+    )
 
     # Clean up
     Path(rec_16k_path.name).unlink(missing_ok=True)

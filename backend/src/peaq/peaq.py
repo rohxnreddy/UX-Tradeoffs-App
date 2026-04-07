@@ -64,6 +64,28 @@ def _write_wav_bytes(samples: np.ndarray, sr: int) -> bytes:
     return buf.getvalue()
 
 
+def align_audio(ref: np.ndarray, deg: np.ndarray) -> np.ndarray:
+    """Align degraded audio to the reference using cross-correlation."""
+    try:
+        from scipy.signal import fftconvolve
+    except ImportError:
+        return deg
+
+    chunk_len = min(len(ref), int(len(ref) * 0.5), 48000 * 3)
+    if chunk_len < 100:
+        return deg
+
+    ref_chunk = ref[:chunk_len]
+    corr = fftconvolve(deg, ref_chunk[::-1], mode="full")
+    delay_samples = int(np.argmax(corr)) - len(ref_chunk) + 1
+
+    if delay_samples > 0:
+        return deg[delay_samples:]
+    if delay_samples < 0:
+        return np.pad(deg, (-delay_samples, 0))
+    return deg
+
+
 def spectral_subtract(
     degraded: np.ndarray,
     noise: np.ndarray,
@@ -135,7 +157,7 @@ def ffmpeg_denoise(
     degraded_path: str | Path,
     noise_reduction_db: float = 12.0,
     noise_floor: float = -25.0,
-) -> np.ndarray | None:
+) -> tuple[np.ndarray, int] | None:
     """
     Denoise audio using FFmpeg's afftdn filter.
 
@@ -148,7 +170,7 @@ def ffmpeg_denoise(
         noise_floor: Noise floor in dB (signals below this are treated as noise)
 
     Returns:
-        Cleaned audio as float64 numpy array, or None if ffmpeg fails
+        Cleaned audio and sample rate, or None if ffmpeg fails
     """
     degraded_path = Path(degraded_path)
     if not degraded_path.exists():
@@ -175,7 +197,7 @@ def ffmpeg_denoise(
 
         # Load the cleaned output
         cleaned, sr = _load_wav(output_path)
-        return cleaned
+        return cleaned, sr
 
     except Exception as e:
         print(f"FFmpeg denoise error: {e}")
@@ -223,6 +245,8 @@ def compute_peaq_odg(
         deg = resample(deg, num_samples)
         details["resampled"] = True
 
+    deg = align_audio(ref, deg)
+
     result = {}
 
     # Spectral subtraction if noise provided
@@ -248,11 +272,14 @@ def compute_peaq_odg(
         result["subtracted_audio_b64"] = base64.b64encode(subtracted_wav).decode("ascii")
 
         # Also run FFmpeg afftdn denoising on the degraded audio
-        ffmpeg_cleaned = ffmpeg_denoise(deg_path)
-        if ffmpeg_cleaned is not None:
-            # Resample to match reference if needed
-            if len(ffmpeg_cleaned) != len(deg):
-                ffmpeg_cleaned = ffmpeg_cleaned[:len(deg)] if len(ffmpeg_cleaned) > len(deg) else np.pad(ffmpeg_cleaned, (0, len(deg) - len(ffmpeg_cleaned)))
+        ffmpeg_result = ffmpeg_denoise(deg_path)
+        ffmpeg_cleaned = None
+        if ffmpeg_result is not None:
+            ffmpeg_cleaned, ffmpeg_sr = ffmpeg_result
+            if ffmpeg_sr != fs_ref:
+                num_samples = int(len(ffmpeg_cleaned) * fs_ref / ffmpeg_sr)
+                ffmpeg_cleaned = resample(ffmpeg_cleaned, num_samples)
+            ffmpeg_cleaned = align_audio(ref, ffmpeg_cleaned)
             ffmpeg_wav = _write_wav_bytes(ffmpeg_cleaned, fs_ref)
             result["ffmpeg_audio_b64"] = base64.b64encode(ffmpeg_wav).decode("ascii")
             details["ffmpeg_denoise"] = True

@@ -103,7 +103,7 @@ class _PeaqTestPageState extends State<PeaqTestPage>
           autoGain: false,
           audioInterruption: AudioInterruptionMode.none,
           androidConfig:
-          AndroidRecordConfig(audioSource: AndroidAudioSource.camcorder),
+          AndroidRecordConfig(audioSource: AndroidAudioSource.defaultSource),
         ),
         path: noisePath,
       );
@@ -136,7 +136,7 @@ class _PeaqTestPageState extends State<PeaqTestPage>
           autoGain: false,
           audioInterruption: AudioInterruptionMode.none,
           androidConfig:
-          AndroidRecordConfig(audioSource: AndroidAudioSource.camcorder),
+          AndroidRecordConfig(audioSource: AndroidAudioSource.defaultSource),
         ),
         path: degradedPath,
       );

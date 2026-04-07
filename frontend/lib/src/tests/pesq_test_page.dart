@@ -2,11 +2,10 @@
 //
 // PESQ test page — voice clarity via WebRTC simulator.
 // Flow:
-//   1. Record 3 s of room noise.
-//   2. Download reference speech from /audio/pesq.
-//   3. Play reference through speaker while recording.
-//   4. Upload both WAVs to POST /pesq/score.
-//   5. Pop with TestResult.
+//   1. Download reference speech from /audio/pesq.
+//   2. Play reference through speaker while recording.
+//   3. Upload the device recording to POST /webrtc/device-call.
+//   4. Pop with TestResult.
 
 import 'dart:convert';
 import 'dart:io';
@@ -94,13 +93,17 @@ class _PesqTestPageState extends State<PesqTestPage>
           echoCancel:         false,
           noiseSuppress:      false,
           autoGain:           false,
-          androidConfig: AndroidRecordConfig(audioSource: AndroidAudioSource.camcorder),
+          audioInterruption:  AudioInterruptionMode.none,
+          androidConfig: AndroidRecordConfig(
+            audioSource: AndroidAudioSource.defaultSource,
+          ),
         ),
         path: recordingPath,
       );
       await Future.delayed(const Duration(milliseconds: 300));
       await SpeakerControl.enableSpeaker();
       await _refPlayer.setFilePath(refPath);
+      await _refPlayer.setVolume(1.0);
       await _refPlayer.play();
       await _refPlayer.playerStateStream.firstWhere((s) => s.processingState == ProcessingState.completed);
       await Future.delayed(const Duration(milliseconds: 500));
@@ -120,15 +123,47 @@ class _PesqTestPageState extends State<PesqTestPage>
       if (streamed.statusCode != 200) throw Exception('Server error: $body');
 
       final data = jsonDecode(body) as Map<String, dynamic>;
+      final branchErrors = <String>[];
+      final direct = data['direct_recording'];
+      final pstn = data['traditional_narrowband'];
+      final volte = data['volte_wideband'];
+      final voip = data['voip_wideband'];
 
-      final pstnScore  = (data['traditional_narrowband']?['pesq_score'] as num?)?.toDouble();
-      final volteScore = (data['volte_wideband']?['pesq_score'] as num?)?.toDouble();
-      final directScore = (data['direct_recording']?['pesq_score'] as num?)?.toDouble();
+      if (direct is Map && direct['error'] != null) {
+        branchErrors.add('Device hardware: ${direct['error']}');
+      }
+      if (pstn is Map && pstn['error'] != null) {
+        branchErrors.add('PSTN: ${pstn['error']}');
+      }
+      if (volte is Map && volte['error'] != null) {
+        branchErrors.add('VoLTE: ${volte['error']}');
+      }
+      if (voip is Map && voip['error'] != null) {
+        branchErrors.add('VoIP: ${voip['error']}');
+      }
+      if (branchErrors.isNotEmpty) {
+        throw Exception('Incomplete PESQ analysis: ${branchErrors.join(' | ')}');
+      }
+
+      final pstnScore = (pstn?['pesq_score'] as num?)?.toDouble();
+      final volteScore = (volte?['pesq_score'] as num?)?.toDouble();
+      final voipScore = (voip?['pesq_score'] as num?)?.toDouble();
+      final directScore = (direct?['pesq_score'] as num?)?.toDouble();
+
+      final missing = <String>[];
+      if (directScore == null) missing.add('Device hardware');
+      if (pstnScore == null) missing.add('PSTN');
+      if (volteScore == null) missing.add('VoLTE');
+      if (voipScore == null) missing.add('VoIP');
+      if (missing.isNotEmpty) {
+        throw Exception('Incomplete PESQ analysis: missing ${missing.join(', ')}.');
+      }
 
       final scores = <String, dynamic>{};
       if (directScore != null) scores['Device Hardware Score'] = directScore.toStringAsFixed(2);
       if (pstnScore != null) scores['PSTN'] = pstnScore.toStringAsFixed(2);
       if (volteScore != null) scores['VoLTE'] = volteScore.toStringAsFixed(2);
+      if (voipScore != null) scores['VoIP'] = voipScore.toStringAsFixed(2);
       
       if (scores.isEmpty) scores['Score'] = 'N/A';
 
