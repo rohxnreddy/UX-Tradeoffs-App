@@ -1,9 +1,15 @@
 #!/bin/bash
 
-#env loading
+# env loading
 set -a
 source .env
 set +a
+
+# ─── VIRTUAL ENV ──────────────────────────────
+if [ -d "venv" ]; then
+    echo "Activating virtual environment..."
+    source venv/bin/activate
+fi
 
 # ─── CONFIG ───────────────────────────────────
 APP_MODULE="src.app:app"

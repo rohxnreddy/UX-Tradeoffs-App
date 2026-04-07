@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import '../src/utils/image_utils.dart';
 
 // ─────────────────────────────────────────────────────────────────
 //  Full-screen camera preview / capture
@@ -235,7 +236,8 @@ class _IQAPageState extends State<IQAPage> {
     try {
       final req = http.MultipartRequest('POST', Uri.parse('$_apiBaseUrl/iqa/score'));
       for (final e in toSend) {
-        req.files.add(await http.MultipartFile.fromPath('images', e.value.path));
+        final resized = await ImageUtils.resizeImageForIQA(e.value);
+        req.files.add(await http.MultipartFile.fromPath('images', resized.path));
       }
 
       final res  = await req.send();
@@ -611,6 +613,8 @@ class _IQAPageState extends State<IQAPage> {
                     ]),
                   ),
                 ),
+
+                const SizedBox(height: 24),
 
                 const SizedBox(height: 24),
 

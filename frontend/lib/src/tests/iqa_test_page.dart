@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import '../utils/image_utils.dart';
 
 import '../core/app_config.dart';
 import '../core/session_store.dart';
@@ -274,8 +275,10 @@ class _IqaTestPageState extends State<IqaTestPage>
       if (_sessionId != null) req.headers['x-session-id'] = _sessionId!;
 
       for (final e in entries) {
+        final resized = await ImageUtils.resizeImageForIQA(e.value);
         req.files.add(await http.MultipartFile.fromPath(
-          'images', e.value.path,
+          'images',
+          resized.path,
           filename: '${e.key.replaceAll(' ', '_').toLowerCase()}.jpg',
         ));
         req.fields['labels'] = e.key;
@@ -406,6 +409,8 @@ class _IqaTestPageState extends State<IqaTestPage>
                     ],
                   ),
                 ]),
+
+                const SizedBox(height: 28),
 
                 const SizedBox(height: 28),
 
