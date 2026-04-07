@@ -79,7 +79,7 @@ class _PesqTestPageState extends State<PesqTestPage>
       final recordingPath = '${tmpDir.path}/webrtc_recording.wav';
 
       _update('Downloading voice sample…', 0.10);
-      final audioRes = await http.get(Uri.parse('$_apiBase/audio/pesq'));
+      final audioRes = await http.get(Uri.parse('$_apiBase/audio/pesq?playback=1'));
       if (audioRes.statusCode != 200) throw Exception('Download failed');
       final refPath = '${tmpDir.path}/pesq_reference.wav';
       await File(refPath).writeAsBytes(audioRes.bodyBytes);
@@ -160,10 +160,18 @@ class _PesqTestPageState extends State<PesqTestPage>
       }
 
       final scores = <String, dynamic>{};
-      if (directScore != null) scores['Device Hardware Score'] = directScore.toStringAsFixed(2);
-      if (pstnScore != null) scores['PSTN'] = pstnScore.toStringAsFixed(2);
-      if (volteScore != null) scores['VoLTE'] = volteScore.toStringAsFixed(2);
-      if (voipScore != null) scores['VoIP'] = voipScore.toStringAsFixed(2);
+      if (directScore != null) {
+        scores['Device Hardware (WB)'] = directScore.toStringAsFixed(2);
+      }
+      if (pstnScore != null) {
+        scores['PSTN (NB Score)'] = pstnScore.toStringAsFixed(2);
+      }
+      if (volteScore != null) {
+        scores['VoLTE (WB Score)'] = volteScore.toStringAsFixed(2);
+      }
+      if (voipScore != null) {
+        scores['VoIP (WB Score)'] = voipScore.toStringAsFixed(2);
+      }
       
       if (scores.isEmpty) scores['Score'] = 'N/A';
 

@@ -8,6 +8,9 @@ import io
 import subprocess
 import tempfile
 
+from src.audio_sync import trim_playback_capture
+from src.audio_diagnostics import summarize_capture_diagnostics
+
 
 class PEAQError(Exception):
     pass
@@ -245,9 +248,18 @@ def compute_peaq_odg(
         deg = resample(deg, num_samples)
         details["resampled"] = True
 
+    deg, sync_details = trim_playback_capture(deg, fs_ref, len(ref), profile="peaq")
+    details["sync_marker"] = sync_details
+    result = {
+        "diagnostics": summarize_capture_diagnostics(
+            deg,
+            fs_ref,
+            expected_samples=len(ref),
+            sync_details=sync_details,
+            content_kind="audio",
+        )
+    }
     deg = align_audio(ref, deg)
-
-    result = {}
 
     # Spectral subtraction if noise provided
     if noise_audio is not None:
@@ -279,6 +291,7 @@ def compute_peaq_odg(
             if ffmpeg_sr != fs_ref:
                 num_samples = int(len(ffmpeg_cleaned) * fs_ref / ffmpeg_sr)
                 ffmpeg_cleaned = resample(ffmpeg_cleaned, num_samples)
+            ffmpeg_cleaned, _ = trim_playback_capture(ffmpeg_cleaned, fs_ref, len(ref), profile="peaq")
             ffmpeg_cleaned = align_audio(ref, ffmpeg_cleaned)
             ffmpeg_wav = _write_wav_bytes(ffmpeg_cleaned, fs_ref)
             result["ffmpeg_audio_b64"] = base64.b64encode(ffmpeg_wav).decode("ascii")
