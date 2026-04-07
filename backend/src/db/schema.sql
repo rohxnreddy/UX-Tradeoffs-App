@@ -236,6 +236,15 @@ CREATE TABLE IF NOT EXISTS iqa_results (
     niqe                NUMERIC(10,4),
     piqe                NUMERIC(10,4),
 
+    -- Unified camera score (0-100, higher = better)
+    -- Weighted geometric mean of "goodness" scores per metric.
+    -- This correctly penalises catastrophic failures in any single dimension.
+    camera_score        NUMERIC(10,4) GENERATED ALWAYS AS (
+        POWER(GREATEST(100.0 - brisque, 0.0), 0.20) * 
+        POWER(GREATEST(100.0 - (niqe * 100.0 / 15.0), 0.0), 0.45) * 
+        POWER(GREATEST(100.0 - piqe, 0.0), 0.35)
+    ) STORED,
+
     raw_output          JSONB
 );
 

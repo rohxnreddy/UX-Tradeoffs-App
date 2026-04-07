@@ -366,22 +366,21 @@ class _IQAPageState extends State<IQAPage> {
     required double niqe,
     required double piqe,
   }) {
-    // Clamp to valid physical ranges and normalise to [0,1].
-    final bN = (brisque.clamp(0.0, 100.0)) / 100.0;
-    final nN = (niqe.clamp(0.0, 15.0))    / 15.0;
-    final pN = (piqe.clamp(0.0, 100.0))   / 100.0;
+    // Convert metrics to 0-100 "goodness" scores.
+    // brisque: 0 (perfect) -> 100 ; 100 (worst) -> 0
+    // niqe:    0 (perfect) -> 100 ; 15  (worst) -> 0
+    // piqe:    0 (perfect) -> 100 ; 100 (worst) -> 0
+    final sB = math.max(0.0, 100.0 - brisque);
+    final sN = math.max(0.0, 100.0 - (niqe * 100.0 / 15.0));
+    final sP = math.max(0.0, 100.0 - piqe);
 
-    // Guard: perfectly zero on any component → score = 100 (perfect quality).
-    if (bN == 0.0 || nN == 0.0 || pN == 0.0) return 100.0;
+    // Weighted geometric mean of goodness scores.
+    // This correctly penalises any single catastrophic failure.
+    final cdi = math.pow(sB, 0.20) *
+                math.pow(sN, 0.45) *
+                math.pow(sP, 0.35);
 
-    // Weighted geometric mean via log-space to avoid floating-point underflow.
-    final cdiRaw = math.exp(
-      0.20 * math.log(bN) +
-          0.45 * math.log(nN) +
-          0.35 * math.log(pN),
-    );
-
-    return (100.0 - (cdiRaw * 100.0)).clamp(0.0, 100.0);
+    return cdi.clamp(0.0, 100.0);
   }
 
   String _cameraScoreLabel(double v) =>
