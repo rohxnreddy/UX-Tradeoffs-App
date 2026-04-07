@@ -7,6 +7,7 @@ from tempfile import NamedTemporaryFile
 from typing import Optional
 from uuid import UUID
 import asyncio
+import shutil
 
 from src.vmaf.vmaf import compute_vmaf
 from src.audio_sync import build_playback_wav, get_sync_marker_version
@@ -24,6 +25,27 @@ load_dotenv()
 
 # Audio files directory
 AUDIO_DIR = Path(__file__).resolve().parent.parent / "peaq-pesq-audio"
+DATA_DIR  = Path(__file__).resolve().parent.parent / "data"
+
+async def _move_to_storage(temp_path: Path, session_id: Optional[UUID], record_id: UUID, original_filename: str, category: str) -> str:
+    """Helper to move a temporary file to the permanent data/{category} directory."""
+    username = "anonymous"
+    if session_id:
+        username = await db.get_username_by_session(session_id)
+    
+    # Sanitise filename
+    safe_name = (original_filename or "unnamed").replace(" ", "_").replace("/", "_")
+    new_filename = f"{username}_{session_id or 'no_session'}_{record_id}_{safe_name}"
+    
+    dest_dir = DATA_DIR / category
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / new_filename
+    
+    # Move the file
+    await run_in_threadpool(shutil.move, str(temp_path), str(dest_path))
+    
+    # Return relative path for DB
+    return f"data/{category}/{new_filename}"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -165,8 +187,6 @@ async def _bg_vmaf_task(record_id: UUID, file_path: Path):
     except Exception as e:
         print(f"Background VMAF task error: {e}")
         await db.update_vmaf_result(record_id=record_id, status="failed")
-    finally:
-        file_path.unlink(missing_ok=True)
 
 
 @app.post("/vmaf/score")
@@ -195,12 +215,17 @@ async def calculate_vmaf(
         status="processing",
     )
 
-    # 2. Fire-and-forget the background calculation
-    asyncio.create_task(_bg_vmaf_task(record_id, temp_path))
+    # 2. Persist the file
+    storage_path = await _move_to_storage(temp_path, session_id, record_id, filename or "video.mp4", "vmaf")
+    await db.update_vmaf_result(record_id, status="processing", storage_path=storage_path)
+
+    # 3. Fire-and-forget the background calculation (using the persistent path)
+    asyncio.create_task(_bg_vmaf_task(record_id, DATA_DIR.parent / storage_path))
 
     return {
         "status":    "processing",
         "record_id": str(record_id),
+        "storage_path": storage_path,
         "message":   "VMAF calculation started in the background."
     }
 
@@ -247,19 +272,35 @@ async def calculate_peaq(
 
     try:
         result    = compute_peaq_odg(deg_path, noise_audio=noise_path)
+        
+        # 1. Generate record ID first (or we can do it after moving, but we need the ID for filename)
+        # We'll insert with placeholder paths and then update, or just generate a UUID.
+        # Let's insert first.
         record_id = await db.insert_peaq_result(
             session_id=session_id,
             degraded_filename=deg_filename,
             noise_filename=noise_filename,
             result=result,
         )
-        return {**result, "record_id": str(record_id)}
+
+        # 2. Move files to storage
+        degraded_storage_path = await _move_to_storage(deg_path, session_id, record_id, f"degraded_{deg_filename}", "peaq")
+        noise_storage_path = None
+        if noise_path:
+            noise_storage_path = await _move_to_storage(noise_path, session_id, record_id, f"noise_{noise_filename}", "peaq")
+        
+        # 3. Update DB with storage paths
+        await (await db.get_pool()).execute(
+            "UPDATE peaq_results SET degraded_storage_path = $1, noise_storage_path = $2 WHERE id = $3",
+            degraded_storage_path, noise_storage_path, record_id
+        )
+
+        return {**result, "record_id": str(record_id), "storage_path": degraded_storage_path}
     except PEAQError as e:
         raise HTTPException(500, f"PEAQ computation failed: {e}")
     finally:
-        deg_path.unlink(missing_ok=True)
-        if noise_path:
-            noise_path.unlink(missing_ok=True)
+        if deg_path.exists(): deg_path.unlink(missing_ok=True)
+        if noise_path and noise_path.exists(): noise_path.unlink(missing_ok=True)
 
 
 # ─── PESQ ─────────────────────────────────────────────────────────────────────
@@ -284,17 +325,25 @@ async def calculate_pesq(
 
     try:
         result    = compute_pesq(tmp_path)
+        # Create record to get ID
         record_id = await db.insert_pesq_result(
             session_id=session_id,
             degraded_filename=filename,
             test_type="upload",
             result=result,
         )
-        return {**result, "record_id": str(record_id)}
+        # Move to storage
+        storage_path = await _move_to_storage(tmp_path, session_id, record_id, filename or "audio.wav", "pesq")
+        # Update record
+        await (await db.get_pool()).execute(
+            "UPDATE pesq_results SET storage_path = $1 WHERE id = $2",
+            storage_path, record_id
+        )
+        return {**result, "record_id": str(record_id), "storage_path": storage_path}
     except PESQError as e:
         raise HTTPException(500, f"PESQ computation failed: {e}")
     finally:
-        tmp_path.unlink(missing_ok=True)
+        if tmp_path.exists(): tmp_path.unlink(missing_ok=True)
 
 
 # ─── WebRTC Codec Call ────────────────────────────────────────────────────────
@@ -341,11 +390,18 @@ async def webrtc_device_call(
             recorded_filename=filename,
             result=result,
         )
-        return {**result, "record_id": str(record_id)}
+        # Move to storage
+        storage_path = await _move_to_storage(rec_path, session_id, record_id, filename or "recording.wav", "pesq")
+        # Update record
+        await (await db.get_pool()).execute(
+            "UPDATE pesq_results SET storage_path = $1 WHERE id = $2",
+            storage_path, record_id
+        )
+        return {**result, "record_id": str(record_id), "storage_path": storage_path}
     except Exception as e:
         raise HTTPException(500, f"WebRTC device call failed: {e}")
     finally:
-        rec_path.unlink(missing_ok=True)
+        if rec_path.exists(): rec_path.unlink(missing_ok=True)
 
 
 # ─── IQA ──────────────────────────────────────────────────────────────────────
@@ -381,9 +437,10 @@ async def calculate_iqa(
         tasks      = [run_in_threadpool(compute_iqa, path) for path in temp_paths]
         all_scores = await asyncio.gather(*tasks)
 
-        response: list[dict] = []
+        # 1. Insert records to get IDs
+        response_base: list[dict] = []
         for idx, scores in enumerate(all_scores):
-            response.append({
+            response_base.append({
                 "image_index": idx,
                 "brisque":     round(scores["brisque"], 2),
                 "niqe":        round(scores["niqe"],    2),
@@ -394,16 +451,21 @@ async def calculate_iqa(
             session_id=session_id,
             filenames=filenames,
             file_sizes=file_sizes,
-            results=response,
+            results=response_base,
         )
 
-        return {
-            "results": [
-                {**r, "record_id": str(rid)}
-                for r, rid in zip(response, record_ids)
-            ]
-        }
+        # 2. Move files and update paths
+        final_results = []
+        for idx, (rid, tmp_path) in enumerate(zip(record_ids, temp_paths)):
+            storage_path = await _move_to_storage(tmp_path, session_id, rid, filenames[idx] or f"img_{idx}.jpg", "iqa")
+            await (await db.get_pool()).execute(
+                "UPDATE iqa_results SET storage_path = $1 WHERE id = $2",
+                storage_path, rid
+            )
+            final_results.append({**response_base[idx], "record_id": str(rid), "storage_path": storage_path})
+
+        return {"results": final_results}
 
     finally:
         for path in temp_paths:
-            path.unlink(missing_ok=True)
+            if path.exists(): path.unlink(missing_ok=True)

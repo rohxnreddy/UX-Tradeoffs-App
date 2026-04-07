@@ -286,6 +286,23 @@ async def insert_session(user_id: UUID, meta: dict) -> UUID:
     return row["id"]
 
 
+async def get_username_by_session(session_id: UUID) -> str:
+    """Fetch the username associated with a session ID."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT u.username
+        FROM sessions s
+        JOIN users u ON s.user_id = u.id
+        WHERE s.id = $1
+        """,
+        session_id,
+    )
+    if not row or not row["username"]:
+        return "anonymous"
+    return row["username"]
+
+
 # ─── 2. VMAF ──────────────────────────────────────────────────────────────────
 
 async def insert_vmaf_result(
@@ -294,19 +311,21 @@ async def insert_vmaf_result(
     filename: Optional[str],
     file_size_bytes: Optional[int],
     status: str = "pending",
+    storage_path: Optional[str] = None,
 ) -> UUID:
     """Insert a shell for the VMAF result which will be updated later."""
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        INSERT INTO vmaf_results (session_id, filename, file_size_bytes, status)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO vmaf_results (session_id, filename, file_size_bytes, status, storage_path)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id
         """,
         session_id,
         filename,
         file_size_bytes,
         status,
+        storage_path,
     )
     return row["id"]
 
@@ -316,19 +335,21 @@ async def update_vmaf_result(
     status: str,
     vmaf_score: Optional[float] = None,
     raw_output: Optional[dict] = None,
+    storage_path: Optional[str] = None,
 ) -> None:
     """Update an existing VMAF result with the actual score and final status."""
     pool = await get_pool()
     await pool.execute(
         """
         UPDATE vmaf_results
-        SET status = $2, vmaf_score = $3, raw_output = $4::jsonb
+        SET status = $2, vmaf_score = $3, raw_output = $4::jsonb, storage_path = COALESCE($5, storage_path)
         WHERE id = $1
         """,
         record_id,
         status,
         vmaf_score,
         _jsonb(raw_output) if raw_output else None,
+        storage_path,
     )
 
 
@@ -363,9 +384,10 @@ async def insert_peaq_result(
         INSERT INTO peaq_results (
             session_id, degraded_filename, noise_filename,
             has_noise_reduction, odg_score, raw_odg, ffmpeg_odg,
-            odg_label, subtracted_audio_b64, raw_output
+            odg_label, subtracted_audio_b64, raw_output,
+            degraded_storage_path, noise_storage_path
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb, $11, $12)
         RETURNING id
         """,
         session_id,
@@ -378,6 +400,8 @@ async def insert_peaq_result(
         result.get("odg_label"),
         result.get("subtracted_audio_b64"),
         _jsonb(result),
+        result.get("degraded_storage_path"),
+        result.get("noise_storage_path"),
     )
     return row["id"]
 
@@ -397,9 +421,9 @@ async def insert_pesq_result(
         """
         INSERT INTO pesq_results (
             session_id, call_type, recorded_filename,
-            direct_pesq, raw_output
+            direct_pesq, raw_output, storage_path
         )
-        VALUES ($1,$2,$3,$4,$5::jsonb)
+        VALUES ($1,$2,$3,$4,$5::jsonb, $6)
         RETURNING id
         """,
         session_id,
@@ -407,6 +431,7 @@ async def insert_pesq_result(
         degraded_filename,
         result.get("pesq_score"),
         _jsonb(result),
+        result.get("storage_path"),
     )
     return row["id"]
 
@@ -433,9 +458,9 @@ async def insert_pesq_result_from_webrtc(
         INSERT INTO pesq_results (
             session_id, call_type, recorded_filename,
             direct_pesq, pstn_pesq, volte_pesq, voip_pesq,
-            degraded_audio_b64, raw_output
+            degraded_audio_b64, raw_output, storage_path
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb, $10)
         RETURNING id
         """,
         session_id,
@@ -447,6 +472,7 @@ async def insert_pesq_result_from_webrtc(
         result.get("voip_wideband", {}).get("pesq_score"),
         result.get("degraded_audio_b64"),
         _jsonb(result),
+        result.get("storage_path"),
     )
     return row["id"]
 
@@ -471,9 +497,9 @@ async def insert_iqa_results(
                 """
                 INSERT INTO iqa_results (
                     session_id, image_index, filename, file_size_bytes,
-                    brisque, niqe, piqe, raw_output
+                    brisque, niqe, piqe, raw_output, storage_path
                 )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb, $9)
                 RETURNING id
                 """,
                 session_id,
@@ -484,6 +510,7 @@ async def insert_iqa_results(
                 scores.get("niqe"),
                 scores.get("piqe"),
                 _jsonb(scores),
+                scores.get("storage_path"),
             )
             ids.append(row["id"])
 

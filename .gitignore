@@ -49,5 +49,8 @@ debug/
 
 test.jpg
 
+# Data storage
+data/
+
 
 

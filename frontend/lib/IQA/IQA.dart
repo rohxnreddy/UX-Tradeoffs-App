@@ -380,7 +380,7 @@ class _IQAPageState extends State<IQAPage> {
                 math.pow(sN, 0.45) *
                 math.pow(sP, 0.35);
 
-    return cdi.clamp(0.0, 100.0);
+    return cdi.clamp(0.0, 100.0).toDouble();
   }
 
   String _cameraScoreLabel(double v) =>

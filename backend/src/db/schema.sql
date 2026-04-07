@@ -154,6 +154,9 @@ CREATE TABLE IF NOT EXISTS vmaf_results (
     -- Job status: 'pending', 'processing', 'completed', 'failed'
     status              TEXT        NOT NULL DEFAULT 'pending',
 
+    -- Local file path
+    storage_path        TEXT,
+
     -- Optional: store raw model output for reanalysis
     raw_output          JSONB
 );
@@ -182,6 +185,9 @@ CREATE TABLE IF NOT EXISTS peaq_results (
     -- Noise reduction artifact (base64 audio returned to client)
     subtracted_audio_b64    TEXT,           -- only populated when noise supplied
 
+    degraded_storage_path   TEXT,
+    noise_storage_path      TEXT,
+
     raw_output              JSONB
 );
 
@@ -209,6 +215,8 @@ CREATE TABLE IF NOT EXISTS pesq_results (
 
     -- Degraded audio returned to client (base64)
     degraded_audio_b64      TEXT,
+
+    storage_path            TEXT,
 
     raw_output              JSONB
 );
@@ -244,6 +252,8 @@ CREATE TABLE IF NOT EXISTS iqa_results (
         POWER(GREATEST(100.0 - (niqe * 100.0 / 15.0), 0.0), 0.45) * 
         POWER(GREATEST(100.0 - piqe, 0.0), 0.35)
     ) STORED,
+
+    storage_path        TEXT,
 
     raw_output          JSONB
 );
