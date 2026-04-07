@@ -115,7 +115,7 @@ class _PeaqTestPageState extends State<PeaqTestPage>
       // 2. Download reference audio
       _update('Downloading audio sample…', 0.30);
       final audioRes = await http
-          .get(Uri.parse('$_apiBase/audio/peaq'))
+          .get(Uri.parse('$_apiBase/audio/peaq?playback=1'))
           .timeout(const Duration(seconds: 30));
       if (audioRes.statusCode != 200) {
         throw Exception(
@@ -140,7 +140,7 @@ class _PeaqTestPageState extends State<PeaqTestPage>
         ),
         path: degradedPath,
       );
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 650));
       await SpeakerControl.enableSpeaker();
       await _refPlayer.setFilePath(refPath);
       await _refPlayer.setVolume(1.0);

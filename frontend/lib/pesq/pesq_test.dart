@@ -700,7 +700,7 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                   child: Column(
                     children: [
                       const Text(
-                        "PSTN",
+                        "PSTN (NB)",
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
@@ -748,7 +748,7 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                   child: Column(
                     children: [
                       const Text(
-                        "VoLTE",
+                        "VoLTE (WB)",
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
@@ -796,7 +796,7 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
                   child: Column(
                     children: [
                       const Text(
-                        "VoIP",
+                        "VoIP (WB)",
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
@@ -836,7 +836,7 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            "Scale: 1.0 (very poor) → 4.5 (excellent)",
+            "NB and WB scores are shown separately; compare within the same mode.",
             style: TextStyle(
               fontSize: 12,
               color: Colors.grey.shade500,

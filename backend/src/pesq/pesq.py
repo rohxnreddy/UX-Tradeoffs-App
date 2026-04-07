@@ -5,6 +5,9 @@ import wave
 import io
 import base64
 
+from src.audio_sync import trim_playback_capture
+from src.audio_diagnostics import summarize_capture_diagnostics
+
 try:
     from pesq import pesq as pesq_score
 except ImportError:
@@ -128,6 +131,20 @@ def compute_pesq(
     target_sr = 16000
     ref_16k = _resample_to(ref, fs_ref, target_sr)
     deg_16k = _resample_to(deg, fs_deg, target_sr)
+    deg_16k, sync_details = trim_playback_capture(
+        deg_16k,
+        target_sr,
+        len(ref_16k),
+        profile="pesq",
+    )
+    details["sync_marker"] = sync_details
+    diagnostics = summarize_capture_diagnostics(
+        deg_16k,
+        target_sr,
+        expected_samples=len(ref_16k),
+        sync_details=sync_details,
+        content_kind="speech",
+    )
     deg_16k = align_audio(ref_16k, deg_16k)
 
     min_len = min(len(ref_16k), len(deg_16k))
@@ -155,6 +172,7 @@ def compute_pesq(
         result["pesq_nb_error"] = str(e)
 
     result["details"] = details
+    result["diagnostics"] = diagnostics
     return result
 
 

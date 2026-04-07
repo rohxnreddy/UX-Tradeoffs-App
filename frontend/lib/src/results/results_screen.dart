@@ -331,21 +331,27 @@ class _ResultCard extends StatelessWidget {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          e.key,
-                          style: const TextStyle(
-                            color: AppTheme.textSec,
-                            fontSize: 12,
+                        Expanded(
+                          child: Text(
+                            e.key,
+                            style: const TextStyle(
+                              color: AppTheme.textSec,
+                              fontSize: 12,
+                            ),
                           ),
                         ),
-                        const Spacer(),
-                        Text(
-                          e.value.toString(),
-                          style: TextStyle(
-                            color: color,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            e.value.toString(),
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ],

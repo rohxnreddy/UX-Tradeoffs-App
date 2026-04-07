@@ -1,5 +1,5 @@
-from fastapi import FastAPI, HTTPException, File, UploadFile, Header
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, File, UploadFile, Header, Query
+from fastapi.responses import FileResponse, Response
 from fastapi.concurrency import run_in_threadpool
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -9,6 +9,7 @@ from uuid import UUID
 import asyncio
 
 from src.vmaf.vmaf import compute_vmaf
+from src.audio_sync import build_playback_wav, get_sync_marker_version
 from src.peaq.peaq import compute_peaq_odg, PEAQError
 from src.pesq.pesq import compute_pesq, PESQError
 from src.webrtc.codec_call import make_webrtc_call, make_device_webrtc_call
@@ -120,18 +121,32 @@ async def get_session(session_id: UUID):
 # ─── Audio streams ────────────────────────────────────────────────────────────
 
 @app.get("/audio/peaq")
-async def stream_peaq_audio():
+async def stream_peaq_audio(playback: bool = Query(False)):
     audio_path = AUDIO_DIR / "peaq.wav"
     if not audio_path.exists():
         raise HTTPException(404, "PEAQ reference audio not found")
+    if playback:
+        wav_bytes = await run_in_threadpool(build_playback_wav, audio_path, "peaq")
+        return Response(
+            content=wav_bytes,
+            media_type="audio/wav",
+            headers={"X-Audio-Sync": get_sync_marker_version("peaq")},
+        )
     return FileResponse(path=str(audio_path), media_type="audio/wav", filename="peaq_reference.wav")
 
 
 @app.get("/audio/pesq")
-async def stream_pesq_audio():
+async def stream_pesq_audio(playback: bool = Query(False)):
     audio_path = AUDIO_DIR / "pesq.wav"
     if not audio_path.exists():
         raise HTTPException(404, "PESQ reference audio not found")
+    if playback:
+        wav_bytes = await run_in_threadpool(build_playback_wav, audio_path, "pesq")
+        return Response(
+            content=wav_bytes,
+            media_type="audio/wav",
+            headers={"X-Audio-Sync": get_sync_marker_version("pesq")},
+        )
     return FileResponse(path=str(audio_path), media_type="audio/wav", filename="pesq_reference.wav")
 
 

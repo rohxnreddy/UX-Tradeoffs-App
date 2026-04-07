@@ -1,14 +1,14 @@
 """
 WebRTC & VoLTE Codec Call Simulator
 
-Uses ACTUAL codecs (Opus, G.711 μ-law, AMR-WB simulation) via ffmpeg to
+Uses ACTUAL codecs (Opus, G.711 μ-law, AMR-WB when available) via ffmpeg to
 encode and decode audio, producing the exact same degradation that occurs
 during a real WebRTC/VoIP/VoLTE call.
 
 Codec pipeline:
   Wideband (VoIP):   PCM → Opus encode (48 kHz) → Opus decode → PCM 16 kHz
   Narrowband (PSTN): PCM → G.711 μ-law encode (8 kHz) → decode → PCM 16 kHz
-  VoLTE (AMR-WB):    PCM → 16 kHz + bandpass 50-7000 Hz → PCM 16 kHz
+  VoLTE (AMR-WB):    PCM → AMR-WB encode → AMR-WB decode → PCM 16 kHz
 """
 
 import subprocess
@@ -19,6 +19,9 @@ import base64
 import numpy as np
 from pathlib import Path
 from scipy.signal import resample
+
+from src.audio_sync import trim_playback_capture
+from src.audio_diagnostics import summarize_capture_diagnostics
 
 try:
     from pesq import pesq as pesq_score
@@ -39,6 +42,13 @@ def _check_ffmpeg():
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
+
+def _run_ffmpeg(cmd: list[str], *, timeout: int = 30) -> None:
+    result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace").strip()
+        raise RuntimeError(stderr or "ffmpeg command failed")
 
 
 def _load_wav(file_path: Path) -> tuple[np.ndarray, int]:
@@ -180,7 +190,7 @@ def encode_decode_opus(input_wav: Path, bitrate: int = 32000) -> Path:
     output_wav.close()
 
     # Encode to Opus (WebRTC standard wideband codec)
-    subprocess.run([
+    _run_ffmpeg([
         "ffmpeg", "-y", "-i", str(input_wav),
         "-c:a", "libopus",
         "-b:a", str(bitrate),
@@ -188,16 +198,16 @@ def encode_decode_opus(input_wav: Path, bitrate: int = 32000) -> Path:
         "-ac", "1",
         "-application", "voip", # VoIP mode (optimized for speech)
         opus_file.name,
-    ], capture_output=True, timeout=30)
+    ])
 
     # Decode back to PCM WAV at 16 kHz (standard wideband output)
-    subprocess.run([
+    _run_ffmpeg([
         "ffmpeg", "-y", "-i", opus_file.name,
         "-c:a", "pcm_s16le",
         "-ar", "16000",
         "-ac", "1",
         output_wav.name,
-    ], capture_output=True, timeout=30)
+    ])
 
     # Clean up intermediate
     Path(opus_file.name).unlink(missing_ok=True)
@@ -216,22 +226,22 @@ def encode_decode_g711(input_wav: Path) -> Path:
     output_wav.close()
 
     # Encode to G.711 μ-law at 8 kHz (PSTN narrowband standard)
-    subprocess.run([
+    _run_ffmpeg([
         "ffmpeg", "-y", "-i", str(input_wav),
         "-c:a", "pcm_mulaw",
         "-ar", "8000",
         "-ac", "1",
         mulaw_file.name,
-    ], capture_output=True, timeout=30)
+    ])
 
     # Decode back to PCM WAV at 16 kHz for PESQ comparison
-    subprocess.run([
+    _run_ffmpeg([
         "ffmpeg", "-y", "-i", mulaw_file.name,
         "-c:a", "pcm_s16le",
         "-ar", "16000",
         "-ac", "1",
         output_wav.name,
-    ], capture_output=True, timeout=30)
+    ])
 
     # Clean up intermediate
     Path(mulaw_file.name).unlink(missing_ok=True)
@@ -239,35 +249,72 @@ def encode_decode_g711(input_wav: Path) -> Path:
     return Path(output_wav.name)
 
 
-def encode_decode_amrwb(input_wav: Path) -> Path:
+def _simulate_amrwb_like(input_wav: Path) -> Path:
     """
-    Simulate AMR-WB (VoLTE) codec characteristics.
-
-    AMR-WB operates at 16 kHz with 50-7000 Hz bandwidth.
-    Since libvo_amrwbenc isn't available, we simulate the key
-    characteristics that affect perceived quality:
-    - 16 kHz sample rate (wideband, better than G.711's 8 kHz)
-    - 50-7000 Hz bandpass (AMR-WB's actual frequency range)
-    - Quantization to simulate codec compression artifacts
+    Fallback approximation for AMR-WB / VoLTE when a real AMR-WB codec
+    round trip is unavailable in ffmpeg.
     """
     output_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     output_wav.close()
 
-    # Apply AMR-WB characteristics:
-    # 1. Resample to 16 kHz (AMR-WB native rate)
-    # 2. Bandpass 50-7000 Hz (AMR-WB frequency range)
-    # 3. The bandwidth limitation is what makes VoLTE sound different
-    #    from Opus (which preserves up to 20 kHz)
-    subprocess.run([
+    _run_ffmpeg([
         "ffmpeg", "-y", "-i", str(input_wav),
         "-ar", "16000",
         "-ac", "1",
         "-af", "highpass=f=50,lowpass=f=7000",
         "-c:a", "pcm_s16le",
         output_wav.name,
-    ], capture_output=True, timeout=30)
+    ])
 
     return Path(output_wav.name)
+
+
+def encode_decode_amrwb(input_wav: Path) -> tuple[Path, dict[str, str]]:
+    """
+    Encode WAV → AMR-WB in 3GP → decode back to WAV.
+
+    Falls back to a band-limited AMR-WB-like approximation if the local
+    ffmpeg build cannot perform the real codec round trip.
+    """
+    amr_file = tempfile.NamedTemporaryFile(suffix=".3gp", delete=False)
+    output_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    amr_file.close()
+    output_wav.close()
+
+    try:
+        _run_ffmpeg([
+            "ffmpeg", "-y", "-i", str(input_wav),
+            "-ar", "16000",
+            "-ac", "1",
+            "-c:a", "libvo_amrwbenc",
+            "-b:a", "23850",
+            amr_file.name,
+        ])
+        _run_ffmpeg([
+            "ffmpeg", "-y", "-i", amr_file.name,
+            "-c:a", "pcm_s16le",
+            "-ar", "16000",
+            "-ac", "1",
+            output_wav.name,
+        ])
+        return Path(output_wav.name), {
+            "codec": "AMR-WB (VoLTE)",
+            "bitrate": "23.85 kbps",
+            "implementation": "real_amr_wb",
+            "description": "VoLTE call — real AMR-WB codec round trip in 3GP container",
+        }
+    except Exception as exc:
+        Path(output_wav.name).unlink(missing_ok=True)
+        fallback_path = _simulate_amrwb_like(input_wav)
+        return fallback_path, {
+            "codec": "AMR-WB-like simulation",
+            "bitrate": "N/A",
+            "implementation": "amr_wb_fallback_simulation",
+            "description": "VoLTE-like call — AMR-WB unavailable, using 50-7000 Hz simulation",
+            "fallback_reason": str(exc),
+        }
+    finally:
+        Path(amr_file.name).unlink(missing_ok=True)
 
 
 def make_webrtc_call(
@@ -356,9 +403,9 @@ def make_webrtc_call(
     except Exception as e:
         result["traditional_narrowband"] = {"error": str(e)}
 
-    # === VoLTE call: AMR-WB codec simulation ===
+    # === VoLTE call: AMR-WB codec round trip ===
     try:
-        volte_path = encode_decode_amrwb(ref_path)
+        volte_path, volte_meta = encode_decode_amrwb(ref_path)
         volte_samples, volte_sr = _load_wav(volte_path)
 
         # Resample to 16 kHz if needed
@@ -370,12 +417,15 @@ def make_webrtc_call(
 
         result["volte_wideband"] = {
             "pesq_score": round(float(volte_pesq), 3),
-            "codec": "AMR-WB (VoLTE)",
+            "codec": volte_meta["codec"],
             "sample_rate": 16000,
-            "bitrate": "23.85 kbps",
+            "bitrate": volte_meta["bitrate"],
             "mode": "VoLTE",
-            "description": "VoLTE call — AMR-WB codec, 16 kHz, 50-7000 Hz bandwidth",
+            "description": volte_meta["description"],
+            "implementation": volte_meta["implementation"],
         }
+        if "fallback_reason" in volte_meta:
+            result["volte_wideband"]["fallback_reason"] = volte_meta["fallback_reason"]
         result["volte_degraded_audio_b64"] = _write_wav_b64(volte_aligned, 16000)
 
         volte_path.unlink(missing_ok=True)
@@ -441,7 +491,20 @@ def make_device_webrtc_call(
         rec_16k = resample(rec_samples, num)
     else:
         rec_16k = rec_samples
+    rec_16k, sync_details = trim_playback_capture(
+        rec_16k,
+        16000,
+        len(ref_16k),
+        profile="pesq",
+    )
     _validate_recording_duration(rec_16k, ref_16k, 16000)
+    diagnostics = summarize_capture_diagnostics(
+        rec_16k,
+        16000,
+        expected_samples=len(ref_16k),
+        sync_details=sync_details,
+        content_kind="speech",
+    )
     aligned_rec_16k = align_audio(ref_16k, rec_16k)
 
     # Also save the phone recording at 16 kHz as a temp WAV for ffmpeg
@@ -459,6 +522,8 @@ def make_device_webrtc_call(
         "description": "Phone recording processed through Opus, G.711, and AMR-WB (VoLTE) codecs",
         "reference_audio_b64": _write_wav_b64(ref_16k, 16000),
         "recorded_audio_b64": _write_wav_b64(aligned_rec_16k, 16000),
+        "sync_marker": sync_details,
+        "diagnostics": diagnostics,
     }
 
     # Trim reference and recording to same length
@@ -522,9 +587,9 @@ def make_device_webrtc_call(
     except Exception as e:
         result["traditional_narrowband"] = {"error": str(e)}
 
-    # ── VoLTE: recording → AMR-WB simulation → PESQ vs reference ──
+    # ── VoLTE: recording → AMR-WB codec round trip → PESQ vs reference ──
     try:
-        volte_path = encode_decode_amrwb(Path(rec_16k_path.name))
+        volte_path, volte_meta = encode_decode_amrwb(Path(rec_16k_path.name))
         volte_samples, volte_sr = _load_wav(volte_path)
         if volte_sr != 16000:
             num = int(len(volte_samples) * 16000 / volte_sr)
@@ -534,12 +599,15 @@ def make_device_webrtc_call(
 
         result["volte_wideband"] = {
             "pesq_score": round(float(volte_pesq), 3),
-            "codec": "AMR-WB (VoLTE)",
+            "codec": volte_meta["codec"],
             "sample_rate": 16000,
-            "bitrate": "23.85 kbps",
+            "bitrate": volte_meta["bitrate"],
             "mode": "VoLTE",
-            "description": "Phone recording → AMR-WB (VoLTE) → PESQ vs original",
+            "description": "Phone recording → " + volte_meta["description"] + " → PESQ vs original",
+            "implementation": volte_meta["implementation"],
         }
+        if "fallback_reason" in volte_meta:
+            result["volte_wideband"]["fallback_reason"] = volte_meta["fallback_reason"]
         result["volte_degraded_audio_b64"] = _write_wav_b64(volte_aligned, 16000)
         volte_path.unlink(missing_ok=True)
     except Exception as e:
