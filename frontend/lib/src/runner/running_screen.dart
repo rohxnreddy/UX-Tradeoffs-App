@@ -564,6 +564,10 @@ class _RunningScreenState extends State<RunningScreen>
     final overallDrainRate =
         (overallDrop != null && elapsedMin != null) ? overallDrop / elapsedMin : null;
 
+    final battScore = _batteryScore(overallDrainRate);
+    final battInterpretation = _batteryInterpretation(overallDrainRate);
+    final battScoreExplain = _batteryScoreExplanation(overallDrainRate);
+
     // Merge any stress-window metrics already produced by BatteryRunner.
     final stressResultIdx = _results.indexWhere((r) => r.id == TestId.battery);
     final stressScores = stressResultIdx != -1
@@ -571,6 +575,9 @@ class _RunningScreenState extends State<RunningScreen>
         : <String, dynamic>{};
 
     final mergedScores = <String, dynamic>{
+      'What it indicates': battInterpretation,
+      'Score (0-100)': battScore,
+      'Score method': battScoreExplain,
       'Suite Start': startLevel == null
           ? 'Unknown'
           : '$startLevel% (${_batteryStartState?.name ?? 'unknown'})',
@@ -646,6 +653,17 @@ class _RunningScreenState extends State<RunningScreen>
       id: TestId.network,
       status: TestStatus.done,
       scores: {
+        'What it indicates': _networkInterpretation(
+          p95LatencyMs: p95,
+          jitterMs: jitter,
+          lossRatePct: lossRate,
+        ),
+        'Score (0-100)': _networkScore(
+          p95LatencyMs: p95,
+          jitterMs: jitter,
+          lossRatePct: lossRate,
+        ),
+        'Score method': _networkScoreExplanation(),
         'Samples': ms.length,
         'Interval': '${_netSampleInterval.inSeconds}s',
         'Conn Type (start→end)':
@@ -735,6 +753,114 @@ class _RunningScreenState extends State<RunningScreen>
   String _connLabel(ConnectivityResult? r) {
     if (r == null) return 'unknown';
     return r.name;
+  }
+
+  int _batteryScore(double? suiteDrainRatePctPerMin) {
+    // Heuristic scale (lower drain is better).
+    // Convert to %/hour for easier interpretation.
+    if (suiteDrainRatePctPerMin == null) return 0;
+    final perHour = suiteDrainRatePctPerMin * 60.0;
+    // 100 at <= 2%/hr, 80 at 5%/hr, 50 at 10%/hr, 0 at >= 20%/hr.
+    if (perHour <= 2) return 100;
+    if (perHour >= 20) return 0;
+    // Piecewise linear segments:
+    if (perHour <= 5) {
+      // 2..5 => 100..80
+      final t = (perHour - 2) / 3.0;
+      return (100 - 20 * t).round().clamp(0, 100);
+    }
+    if (perHour <= 10) {
+      // 5..10 => 80..50
+      final t = (perHour - 5) / 5.0;
+      return (80 - 30 * t).round().clamp(0, 100);
+    }
+    // 10..20 => 50..0
+    final t = (perHour - 10) / 10.0;
+    return (50 - 50 * t).round().clamp(0, 100);
+  }
+
+  String _batteryInterpretation(double? suiteDrainRatePctPerMin) {
+    if (suiteDrainRatePctPerMin == null) {
+      return 'Battery drain couldn’t be computed reliably (missing start/end level).';
+    }
+    final perHour = suiteDrainRatePctPerMin * 60.0;
+    if (perHour <= 5) {
+      return 'Lower drain under the full test suite. Better endurance / efficiency.';
+    }
+    if (perHour <= 10) {
+      return 'Moderate drain during the suite. Expect average endurance under load.';
+    }
+    return 'High drain during the suite. Indicates weaker endurance under load or high background power use.';
+  }
+
+  String _batteryScoreExplanation(double? suiteDrainRatePctPerMin) {
+    final perHour = suiteDrainRatePctPerMin == null ? null : suiteDrainRatePctPerMin * 60.0;
+    return perHour == null
+        ? 'Score=0 when drain rate is unavailable.'
+        : 'Uses suite drain rate converted to %/hour. Benchmarks: 100≤2%/hr, 80≈5%/hr, 50≈10%/hr, 0≥20%/hr (piecewise linear).';
+  }
+
+  int _networkScore({
+    required double p95LatencyMs,
+    required double jitterMs,
+    required double lossRatePct,
+  }) {
+    // Score components: latency (60), jitter (25), loss (15).
+    // Uses thresholds commonly used for interactive/voice guidance (e.g., ITU-T G.114 one-way delay guidance).
+    final lat = _scorePiecewise(p95LatencyMs, [
+      const _ScorePoint(80, 60),
+      const _ScorePoint(150, 45),
+      const _ScorePoint(300, 20),
+      const _ScorePoint(600, 0),
+    ]);
+    final jit = _scorePiecewise(jitterMs, [
+      const _ScorePoint(10, 25),
+      const _ScorePoint(20, 18),
+      const _ScorePoint(50, 8),
+      const _ScorePoint(100, 0),
+    ]);
+    final loss = _scorePiecewise(lossRatePct, [
+      const _ScorePoint(0.5, 15),
+      const _ScorePoint(1.0, 12),
+      const _ScorePoint(2.0, 8),
+      const _ScorePoint(5.0, 0),
+    ]);
+    return (lat + jit + loss).round().clamp(0, 100);
+  }
+
+  String _networkInterpretation({
+    required double p95LatencyMs,
+    required double jitterMs,
+    required double lossRatePct,
+  }) {
+    if (lossRatePct >= 2.0) {
+      return 'Packet loss is elevated; expect retries, stalls, and unstable real-time quality.';
+    }
+    if (p95LatencyMs >= 300 || jitterMs >= 50) {
+      return 'Latency/jitter are high; interactive and real-time tasks may feel laggy or choppy.';
+    }
+    if (p95LatencyMs <= 150 && jitterMs <= 20 && lossRatePct <= 1.0) {
+      return 'Stable for interactive use; suitable for most real-time and upload tasks.';
+    }
+    return 'Usable but variable; expect occasional spikes depending on congestion.';
+  }
+
+  String _networkScoreExplanation() {
+    return 'Score = latency(60) + jitter(25) + loss(15). Latency uses p95 RTT; jitter uses avg absolute delta; loss is probe timeout rate. Thresholds follow common interactive/voice guidance (see ITU-T G.114 for delay guidance).';
+  }
+
+  double _scorePiecewise(double x, List<_ScorePoint> pts) {
+    if (pts.isEmpty) return 0;
+    if (x <= pts.first.x) return pts.first.score.toDouble();
+    for (int i = 1; i < pts.length; i++) {
+      final a = pts[i - 1];
+      final b = pts[i];
+      if (x <= b.x) {
+        final t = (x - a.x) / (b.x - a.x);
+        return a.score + (b.score - a.score) * t;
+      }
+    }
+    return pts.last.score.toDouble();
   }
 
   Future<void> _postBatteryResult(
@@ -958,6 +1084,12 @@ class _ThroughputSample {
   final Duration t;
   final double mbps;
   const _ThroughputSample({required this.t, required this.mbps});
+}
+
+class _ScorePoint {
+  final double x;
+  final int score;
+  const _ScorePoint(this.x, this.score);
 }
 
 // ── Progress tile (unchanged from original) ───────────────────────────────────
