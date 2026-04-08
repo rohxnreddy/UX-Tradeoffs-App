@@ -23,6 +23,10 @@ STREAMLIT_PID_FILE="streamlit.pid"
 STREAMLIT_APP="src/db/dashboard.py"
 STREAMLIT_PORT="8501"
 
+DATA_VIEWER_PID_FILE="data_viewer.pid"
+DATA_VIEWER_APP="src/data_viewer.py"
+DATA_VIEWER_PORT="8502"
+
 # ─── SETUP ───────────────────────────────────
 mkdir -p $LOG_DIR
 
@@ -43,11 +47,22 @@ fi
 if [ -f $STREAMLIT_PID_FILE ]; then
     S_PID=$(cat $STREAMLIT_PID_FILE)
     if ps -p $S_PID > /dev/null 2>&1; then
-        echo "Streamlit already running with PID $S_PID"
+        echo "Streamlit dashboard already running with PID $S_PID"
         exit 1
     else
         echo "Removing stale Streamlit PID file"
         rm -f $STREAMLIT_PID_FILE
+    fi
+fi
+
+if [ -f $DATA_VIEWER_PID_FILE ]; then
+    D_PID=$(cat $DATA_VIEWER_PID_FILE)
+    if ps -p $D_PID > /dev/null 2>&1; then
+        echo "Data Viewer already running with PID $D_PID"
+        exit 1
+    else
+        echo "Removing stale Data Viewer PID file"
+        rm -f $DATA_VIEWER_PID_FILE
     fi
 fi
 
@@ -77,7 +92,19 @@ nohup streamlit run $STREAMLIT_APP \
 # ─── SAVE STREAMLIT PID ───────────────────────
 echo $! > $STREAMLIT_PID_FILE
 
+# ─── START DATA VIEWER ────────────────────────
+echo "Starting Streamlit data viewer..."
+nohup streamlit run $DATA_VIEWER_APP \
+    --server.port $DATA_VIEWER_PORT \
+    --server.address $HOST \
+    --server.headless true \
+    > $LOG_DIR/data_viewer.log 2>&1 &
+
+# ─── SAVE DATA VIEWER PID ─────────────────────
+echo $! > $DATA_VIEWER_PID_FILE
+
 echo "Server started successfully!"
 echo "PID: $(cat $PID_FILE)"
 echo "Streamlit PID: $(cat $STREAMLIT_PID_FILE)"
+echo "Data Viewer PID: $(cat $DATA_VIEWER_PID_FILE)"
 echo "Logs: $LOG_DIR/"

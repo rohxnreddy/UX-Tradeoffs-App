@@ -2,6 +2,7 @@
 
 PID_FILE="gunicorn.pid"
 STREAMLIT_PID_FILE="streamlit.pid"
+DATA_VIEWER_PID_FILE="data_viewer.pid"
 
 # ─── STOP GUNICORN ────────────────────────────
 if [ -f $PID_FILE ]; then
@@ -29,4 +30,18 @@ if [ -f $STREAMLIT_PID_FILE ]; then
     rm -f $STREAMLIT_PID_FILE
 else
     echo "No Streamlit PID file found"
+fi
+
+# ─── STOP DATA VIEWER ─────────────────────────
+if [ -f $DATA_VIEWER_PID_FILE ]; then
+    D_PID=$(cat $DATA_VIEWER_PID_FILE)
+    if ps -p $D_PID > /dev/null 2>&1; then
+        kill $D_PID
+        echo "Data Viewer stopped (PID: $D_PID)"
+    else
+        echo "Data Viewer process not running, removing stale PID file"
+    fi
+    rm -f $DATA_VIEWER_PID_FILE
+else
+    echo "No Data Viewer PID file found"
 fi
