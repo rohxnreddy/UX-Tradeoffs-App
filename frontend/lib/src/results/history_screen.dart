@@ -33,6 +33,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     TestId.pesq: Icons.record_voice_over_outlined,
     TestId.iqa: Icons.image_outlined,
     TestId.battery: Icons.battery_charging_full_outlined,
+    TestId.network: Icons.network_check_outlined,
   };
 
   static const _testColors = {
@@ -41,6 +42,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     TestId.pesq: AppTheme.pesqColor,
     TestId.iqa: AppTheme.iqaColor,
     TestId.battery: AppTheme.battColor,
+    TestId.network: AppTheme.accent,
   };
 
   @override

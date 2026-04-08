@@ -11,8 +11,16 @@
 //   4. After all tests → auto-navigate to Results after 1.2 s.
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:battery_plus/battery_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
+import '../core/app_config.dart';
+import '../core/session_store.dart';
 import '../core/theme.dart';
 import 'test_model.dart';
 import 'test_runner.dart';
@@ -47,6 +55,37 @@ class _RunningScreenState extends State<RunningScreen>
   final List<TestResult> _results = [];
 
   Completer<TestResult>? _vmafCompleter;
+  Completer<TestResult>? _networkCompleter;
+
+  // ── Suite-scoped monitors (battery/network) ───────────────────────────────
+  DateTime? _suiteStartedAt;
+  DateTime? _suiteEndedAt;
+
+  // Battery (suite-level)
+  final Battery _battery = Battery();
+  Timer? _batteryPollTimer;
+  int? _batteryStartLevel;
+  int? _batteryEndLevel;
+  BatteryState? _batteryStartState;
+  BatteryState? _batteryEndState;
+  int? _batteryMinObserved;
+  int? _batteryMaxObserved;
+
+  // Network latency sampling (suite-level)
+  static const Duration _netSampleInterval = Duration(seconds: 10);
+  Timer? _netSampleTimer;
+  final List<_LatencySample> _netSamples = <_LatencySample>[];
+  int _netProbeAttempts = 0;
+  int _netProbeFailures = 0;
+  ConnectivityResult? _netConnTypeStart;
+  ConnectivityResult? _netConnTypeEnd;
+  int _netConnChanges = 0;
+  StreamSubscription<List<ConnectivityResult>>? _netConnSub;
+
+  // Optional throughput samples (coarse strength signal)
+  static const Duration _netThroughputInterval = Duration(seconds: 20);
+  Timer? _netThroughputTimer;
+  final List<_ThroughputSample> _netThroughput = <_ThroughputSample>[];
 
   // ── Design maps ──────────────────────────────────────────────────────────
   static const _testNames = {
@@ -55,6 +94,7 @@ class _RunningScreenState extends State<RunningScreen>
     TestId.pesq: 'Voice Clarity',
     TestId.iqa: 'Camera Quality',
     TestId.battery: 'Battery Health',
+    TestId.network: 'Network',
   };
 
   static const _testColors = {
@@ -63,6 +103,7 @@ class _RunningScreenState extends State<RunningScreen>
     TestId.pesq: AppTheme.pesqColor,
     TestId.iqa: AppTheme.iqaColor,
     TestId.battery: AppTheme.battColor,
+    TestId.network: AppTheme.accent,
   };
 
   static const _testIcons = {
@@ -71,6 +112,7 @@ class _RunningScreenState extends State<RunningScreen>
     TestId.pesq: Icons.record_voice_over_outlined,
     TestId.iqa: Icons.image_outlined,
     TestId.battery: Icons.battery_charging_full_outlined,
+    TestId.network: Icons.network_check_outlined,
   };
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -99,6 +141,7 @@ class _RunningScreenState extends State<RunningScreen>
 
   @override
   void dispose() {
+    _stopSuiteMonitors();
     _pulseCtrl.dispose();
     super.dispose();
   }
@@ -106,6 +149,9 @@ class _RunningScreenState extends State<RunningScreen>
   // ── Orchestration ─────────────────────────────────────────────────────────
 
   Future<void> _runAll() async {
+    _suiteStartedAt = DateTime.now();
+    await _startSuiteMonitors();
+
     for (final def in allTests) {
       if (!widget.selectedTests.contains(def.id)) {
         _results.add(TestResult(id: def.id, status: TestStatus.skipped));
@@ -195,6 +241,42 @@ class _RunningScreenState extends State<RunningScreen>
       }
     }
 
+    // Finalize suite-scoped monitors before Results.
+    _suiteEndedAt ??= DateTime.now();
+    await _finalizeNetworkIfSelected();
+    await _finalizeSuiteBatteryIfSelected();
+    _stopSuiteMonitors();
+
+    // Network sampling runs in the background; patch the placeholder before Results.
+    if (_networkCompleter != null) {
+      if (!(_networkCompleter!.isCompleted)) {
+        setState(() {
+          _overallMsg = 'Finalizing network samples…';
+          _progress[TestId.network] = TestProgress(
+            testId: TestId.network,
+            status: TestStatus.running,
+            message: 'Computing latency variance…',
+            fraction: 0.90,
+          );
+        });
+      }
+      final networkResult = await _networkCompleter!.future;
+      final idx = _results.indexWhere((r) => r.id == TestId.network);
+      if (idx != -1) _results[idx] = networkResult;
+      if (mounted) {
+        setState(() {
+          _progress[TestId.network] = TestProgress(
+            testId: TestId.network,
+            status: networkResult.status,
+            message: networkResult.status == TestStatus.done
+                ? '${_testNames[TestId.network]} complete'
+                : 'Failed: ${networkResult.errorMessage}',
+            fraction: 1,
+          );
+        });
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _done = true;
@@ -264,6 +346,23 @@ class _RunningScreenState extends State<RunningScreen>
           },
         );
         return runner.run();
+
+      case TestId.network:
+        // Network runs in background across the entire suite.
+        _networkCompleter ??= Completer<TestResult>();
+        _emitProgress(
+          def.id,
+          'Sampling latency every ${_netSampleInterval.inSeconds}s…',
+          0.20,
+        );
+        return TestResult(
+          id: def.id,
+          status: TestStatus.running,
+          scores: const {
+            'Status': 'Sampling in background…',
+          },
+          completedAt: DateTime.now(),
+        );
     }
   }
 
@@ -289,6 +388,464 @@ class _RunningScreenState extends State<RunningScreen>
       );
       _overallMsg = msg;
     });
+  }
+
+  // ── Suite monitors: start/stop/finalize ───────────────────────────────────
+
+  Future<void> _startSuiteMonitors() async {
+    // Battery monitor runs only if battery test is selected.
+    if (widget.selectedTests.contains(TestId.battery)) {
+      await _takeBatteryStartSnapshot();
+      _batteryPollTimer?.cancel();
+      _batteryPollTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+        final level = await _safeBatteryLevel();
+        if (level == null || !mounted) return;
+        _batteryMinObserved =
+            _batteryMinObserved == null ? level : min(_batteryMinObserved!, level);
+        _batteryMaxObserved =
+            _batteryMaxObserved == null ? level : max(_batteryMaxObserved!, level);
+      });
+    }
+
+    // Network monitor runs only if network test is selected.
+    if (widget.selectedTests.contains(TestId.network)) {
+      _netSamples.clear();
+      _netThroughput.clear();
+      _netProbeAttempts = 0;
+      _netProbeFailures = 0;
+      _netConnChanges = 0;
+
+      final conn = Connectivity();
+      final initial = await conn.checkConnectivity();
+      _netConnTypeStart = initial.isNotEmpty ? initial.first : null;
+      _netConnTypeEnd = _netConnTypeStart;
+      _netConnSub?.cancel();
+      _netConnSub = conn.onConnectivityChanged.listen((results) {
+        final next = results.isNotEmpty ? results.first : null;
+        if (next != _netConnTypeEnd) {
+          _netConnChanges++;
+        }
+        _netConnTypeEnd = next;
+      });
+
+      _netSampleTimer?.cancel();
+      _netSampleTimer = Timer.periodic(_netSampleInterval, (_) {
+        _captureLatencySample();
+      });
+
+      // Capture an immediate sample (t=0) so short runs still get data.
+      unawaited(_captureLatencySample());
+
+      _netThroughputTimer?.cancel();
+      _netThroughputTimer = Timer.periodic(_netThroughputInterval, (_) {
+        _captureThroughputSample();
+      });
+      unawaited(_captureThroughputSample());
+    }
+  }
+
+  void _stopSuiteMonitors() {
+    _batteryPollTimer?.cancel();
+    _batteryPollTimer = null;
+    _netSampleTimer?.cancel();
+    _netSampleTimer = null;
+    _netThroughputTimer?.cancel();
+    _netThroughputTimer = null;
+    _netConnSub?.cancel();
+    _netConnSub = null;
+  }
+
+  Future<void> _takeBatteryStartSnapshot() async {
+    _batteryStartLevel = await _safeBatteryLevel();
+    _batteryStartState = await _safeBatteryState();
+    if (_batteryStartLevel != null) {
+      _batteryMinObserved = _batteryStartLevel;
+      _batteryMaxObserved = _batteryStartLevel;
+    }
+  }
+
+  Future<void> _takeBatteryEndSnapshot() async {
+    _batteryEndLevel = await _safeBatteryLevel();
+    _batteryEndState = await _safeBatteryState();
+  }
+
+  Future<int?> _safeBatteryLevel() async {
+    try {
+      return await _battery.batteryLevel;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<BatteryState?> _safeBatteryState() async {
+    try {
+      return await _battery.batteryState;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _captureLatencySample() async {
+    final startedAt = _suiteStartedAt;
+    if (startedAt == null) return;
+    _netProbeAttempts++;
+    final latency = await _measureLatencyMs();
+    if (latency == null) return;
+    _netSamples.add(_LatencySample(
+      t: DateTime.now().difference(startedAt),
+      latencyMs: latency,
+    ));
+  }
+
+  Future<int?> _measureLatencyMs() async {
+    try {
+      final sw = Stopwatch()..start();
+      final socket = await Socket.connect(
+        '1.1.1.1',
+        53,
+        timeout: const Duration(seconds: 3),
+      );
+      sw.stop();
+      socket.destroy();
+      return sw.elapsedMilliseconds;
+    } catch (_) {
+      _netProbeFailures++;
+      return null;
+    }
+  }
+
+  Future<void> _captureThroughputSample() async {
+    final startedAt = _suiteStartedAt;
+    if (startedAt == null) return;
+    final mbps = await _measureDownloadMbps();
+    if (mbps == null) return;
+    _netThroughput.add(_ThroughputSample(
+      t: DateTime.now().difference(startedAt),
+      mbps: mbps,
+    ));
+  }
+
+  Future<double?> _measureDownloadMbps() async {
+    try {
+      final sw = Stopwatch()..start();
+      final response = await http
+          .get(Uri.parse('https://speed.hetzner.de/1MB.bin'))
+          .timeout(const Duration(seconds: 8));
+      sw.stop();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      final bits = response.bodyBytes.length * 8;
+      final seconds = max(sw.elapsedMilliseconds / 1000.0, 0.001);
+      return (bits / seconds) / 1000000.0;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _finalizeSuiteBatteryIfSelected() async {
+    if (!widget.selectedTests.contains(TestId.battery)) {
+      return;
+    }
+
+    _suiteEndedAt ??= DateTime.now();
+    await _takeBatteryEndSnapshot();
+
+    final suiteStart = _suiteStartedAt;
+    final suiteEnd = _suiteEndedAt;
+    final startLevel = _batteryStartLevel;
+    final endLevel = _batteryEndLevel;
+    final elapsedMin = (suiteStart != null && suiteEnd != null)
+        ? max(suiteEnd.difference(suiteStart).inSeconds / 60.0, 0.001)
+        : null;
+
+    final overallDrop =
+        (startLevel != null && endLevel != null) ? (startLevel - endLevel) : null;
+    final overallDrainRate =
+        (overallDrop != null && elapsedMin != null) ? overallDrop / elapsedMin : null;
+
+    // Merge any stress-window metrics already produced by BatteryRunner.
+    final stressResultIdx = _results.indexWhere((r) => r.id == TestId.battery);
+    final stressScores = stressResultIdx != -1
+        ? Map<String, dynamic>.from(_results[stressResultIdx].scores)
+        : <String, dynamic>{};
+
+    final mergedScores = <String, dynamic>{
+      'Suite Start': startLevel == null
+          ? 'Unknown'
+          : '$startLevel% (${_batteryStartState?.name ?? 'unknown'})',
+      'Suite End': endLevel == null
+          ? 'Unknown'
+          : '$endLevel% (${_batteryEndState?.name ?? 'unknown'})',
+      'Suite Drop': overallDrop == null ? 'N/A' : '$overallDrop%',
+      'Suite Duration': elapsedMin == null ? 'N/A' : '${elapsedMin.toStringAsFixed(1)} min',
+      'Suite Drain Score': overallDrainRate == null
+          ? 'N/A'
+          : '${overallDrainRate.toStringAsFixed(3)} %/min',
+      'Min/Max Observed': (_batteryMinObserved == null || _batteryMaxObserved == null)
+          ? 'N/A'
+          : '${_batteryMinObserved}% / ${_batteryMaxObserved}%',
+      ...stressScores,
+    };
+
+    final patched = TestResult(
+      id: TestId.battery,
+      status: TestStatus.done,
+      scores: mergedScores,
+      completedAt: DateTime.now(),
+    );
+
+    if (stressResultIdx != -1) {
+      _results[stressResultIdx] = patched;
+    }
+
+    await _postBatteryResult(patched, overallDrop, overallDrainRate);
+  }
+
+  Future<void> _finalizeNetworkIfSelected() async {
+    if (!widget.selectedTests.contains(TestId.network)) {
+      return;
+    }
+
+    _suiteEndedAt ??= DateTime.now();
+    _netSampleTimer?.cancel();
+    _netSampleTimer = null;
+
+    final ms = _netSamples.map((e) => e.latencyMs).toList();
+    if (ms.isEmpty) {
+      final failed = TestResult(
+        id: TestId.network,
+        status: TestStatus.failed,
+        errorMessage: 'No latency samples captured.',
+        completedAt: DateTime.now(),
+      );
+      if (!(_networkCompleter?.isCompleted ?? true)) {
+        _networkCompleter!.complete(failed);
+      }
+      return;
+    }
+
+    final mean = ms.reduce((a, b) => a + b) / ms.length;
+    final variance = _varianceInt(ms, mean);
+    final stddev = sqrt(variance);
+    final jitter = _jitter(ms);
+    final minLatency = ms.reduce(min);
+    final maxLatency = ms.reduce(max);
+    final p50 = _percentileInt(ms, 0.50);
+    final p95 = _percentileInt(ms, 0.95);
+    final lossRate = _netProbeAttempts > 0
+        ? (_netProbeFailures / _netProbeAttempts) * 100.0
+        : 0.0;
+
+    final mbps = _netThroughput.map((e) => e.mbps).toList();
+    final avgMbps =
+        mbps.isNotEmpty ? mbps.reduce((a, b) => a + b) / mbps.length : null;
+    final stdMbps = mbps.isNotEmpty ? _stdDevDouble(mbps) : null;
+
+    final result = TestResult(
+      id: TestId.network,
+      status: TestStatus.done,
+      scores: {
+        'Samples': ms.length,
+        'Interval': '${_netSampleInterval.inSeconds}s',
+        'Conn Type (start→end)':
+            '${_connLabel(_netConnTypeStart)}→${_connLabel(_netConnTypeEnd)}',
+        'Conn Changes': _netConnChanges,
+        'Avg Latency': '${mean.toStringAsFixed(1)} ms',
+        'Min/Max Latency': '$minLatency / $maxLatency ms',
+        'P50/P95 Latency':
+            '${p50.toStringAsFixed(0)} / ${p95.toStringAsFixed(0)} ms',
+        'Variance': '${variance.toStringAsFixed(1)} ms²',
+        'Std Dev': '${stddev.toStringAsFixed(1)} ms',
+        'Jitter': '${jitter.toStringAsFixed(1)} ms',
+        'Probe Loss': '${lossRate.toStringAsFixed(1)}%',
+        if (avgMbps != null) 'Avg Download': '${avgMbps.toStringAsFixed(2)} Mbps',
+        if (stdMbps != null)
+          'Download Std Dev': '${stdMbps.toStringAsFixed(2)} Mbps',
+      },
+      completedAt: DateTime.now(),
+    );
+
+    if (!(_networkCompleter?.isCompleted ?? true)) {
+      _networkCompleter!.complete(result);
+    }
+
+    await _postNetworkResult(
+      result,
+      mean,
+      variance,
+      stddev,
+      jitter,
+      minLatency: minLatency.toDouble(),
+      maxLatency: maxLatency.toDouble(),
+      p50Latency: p50,
+      p95Latency: p95,
+      lossRatePct: lossRate,
+      avgDownloadMbps: avgMbps,
+      stdDownloadMbps: stdMbps,
+      connTypeStart: _connLabel(_netConnTypeStart),
+      connTypeEnd: _connLabel(_netConnTypeEnd),
+      connChanges: _netConnChanges,
+      probeAttempts: _netProbeAttempts,
+      probeFailures: _netProbeFailures,
+    );
+  }
+
+  double _varianceInt(List<int> values, double mean) {
+    final n = values.length;
+    if (n == 0) return 0;
+    double sum = 0;
+    for (final v in values) {
+      final d = v - mean;
+      sum += d * d;
+    }
+    return sum / n;
+  }
+
+  double _jitter(List<int> values) {
+    if (values.length < 2) return 0;
+    double sumDiff = 0;
+    for (int i = 1; i < values.length; i++) {
+      sumDiff += (values[i] - values[i - 1]).abs();
+    }
+    return sumDiff / (values.length - 1);
+  }
+
+  double _stdDevDouble(List<double> values) {
+    final mean = values.reduce((a, b) => a + b) / values.length;
+    double sum = 0;
+    for (final v in values) {
+      final d = v - mean;
+      sum += d * d;
+    }
+    return sqrt(sum / values.length);
+  }
+
+  double _percentileInt(List<int> values, double p) {
+    final sorted = [...values]..sort();
+    if (sorted.isEmpty) return 0;
+    final idx = (p * (sorted.length - 1)).clamp(0, sorted.length - 1);
+    final i = idx.floor();
+    final j = idx.ceil();
+    if (i == j) return sorted[i].toDouble();
+    final t = idx - i;
+    return sorted[i].toDouble() + (sorted[j] - sorted[i]) * t;
+  }
+
+  String _connLabel(ConnectivityResult? r) {
+    if (r == null) return 'unknown';
+    return r.name;
+  }
+
+  Future<void> _postBatteryResult(
+    TestResult result,
+    int? overallDrop,
+    double? overallDrainRate,
+  ) async {
+    final sessionId = SessionStore.instance.sessionId;
+    if (sessionId == null) return;
+
+    final payload = <String, dynamic>{
+      'suite_started_at': _suiteStartedAt?.toIso8601String(),
+      'suite_ended_at': _suiteEndedAt?.toIso8601String(),
+      'battery_start_level': _batteryStartLevel,
+      'battery_end_level': _batteryEndLevel,
+      'battery_start_state': _batteryStartState?.name,
+      'battery_end_state': _batteryEndState?.name,
+      'overall_drop': overallDrop,
+      'overall_drain_rate': overallDrainRate,
+      'min_level_observed': _batteryMinObserved,
+      'max_level_observed': _batteryMaxObserved,
+      'raw_output': result.scores,
+    };
+
+    await _postJson(
+      path: '/battery/result',
+      sessionId: sessionId,
+      payload: payload,
+    );
+  }
+
+  Future<void> _postNetworkResult(
+    TestResult result,
+    double mean,
+    double variance,
+    double stddev,
+    double jitter,
+    {
+      double? minLatency,
+      double? maxLatency,
+      double? p50Latency,
+      double? p95Latency,
+      double? lossRatePct,
+      double? avgDownloadMbps,
+      double? stdDownloadMbps,
+      String? connTypeStart,
+      String? connTypeEnd,
+      int? connChanges,
+      int? probeAttempts,
+      int? probeFailures,
+    }
+  ) async {
+    final sessionId = SessionStore.instance.sessionId;
+    if (sessionId == null) return;
+
+    final payload = <String, dynamic>{
+      'suite_started_at': _suiteStartedAt?.toIso8601String(),
+      'suite_ended_at': _suiteEndedAt?.toIso8601String(),
+      'sample_interval_seconds': _netSampleInterval.inSeconds,
+      'sample_count': _netSamples.length,
+      'avg_latency_ms': mean,
+      'variance_latency_ms2': variance,
+      'stddev_latency_ms': stddev,
+      'jitter_ms': jitter,
+      'min_latency_ms': minLatency,
+      'max_latency_ms': maxLatency,
+      'p50_latency_ms': p50Latency,
+      'p95_latency_ms': p95Latency,
+      'loss_rate_pct': lossRatePct,
+      'avg_download_mbps': avgDownloadMbps,
+      'stddev_download_mbps': stdDownloadMbps,
+      'conn_type_start': connTypeStart,
+      'conn_type_end': connTypeEnd,
+      'conn_changes': connChanges,
+      'probe_attempts': probeAttempts,
+      'probe_failures': probeFailures,
+      'samples': _netSamples
+          .map((e) => {'t_ms': e.t.inMilliseconds, 'latency_ms': e.latencyMs})
+          .toList(),
+      'throughput_samples': _netThroughput
+          .map((e) => {'t_ms': e.t.inMilliseconds, 'mbps': e.mbps})
+          .toList(),
+      'raw_output': result.scores,
+    };
+
+    await _postJson(
+      path: '/network/result',
+      sessionId: sessionId,
+      payload: payload,
+    );
+  }
+
+  Future<void> _postJson({
+    required String path,
+    required String sessionId,
+    required Map<String, dynamic> payload,
+  }) async {
+    try {
+      await http
+          .post(
+            Uri.parse('${AppConfig.apiBaseUrl}$path'),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-session-id': sessionId,
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 12));
+    } catch (_) {
+      // Keep silent; tests should not fail just because telemetry persistence failed.
+    }
   }
 
   // ── UI ────────────────────────────────────────────────────────────────────
@@ -389,6 +946,18 @@ class _RunningScreenState extends State<RunningScreen>
       ),
     );
   }
+}
+
+class _LatencySample {
+  final Duration t;
+  final int latencyMs;
+  const _LatencySample({required this.t, required this.latencyMs});
+}
+
+class _ThroughputSample {
+  final Duration t;
+  final double mbps;
+  const _ThroughputSample({required this.t, required this.mbps});
 }
 
 // ── Progress tile (unchanged from original) ───────────────────────────────────

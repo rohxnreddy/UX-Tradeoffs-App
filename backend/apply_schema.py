@@ -27,7 +27,9 @@ async def main():
             sql = f.read()
 
         # Safely clear old tables before applying the new schema
-        await conn.execute("DROP TABLE IF EXISTS iqa_results, pesq_results, peaq_results, vmaf_results, device_sessions, sessions, users CASCADE;")
+        await conn.execute(
+            "DROP TABLE IF EXISTS network_results, battery_results, iqa_results, pesq_results, peaq_results, vmaf_results, device_sessions, sessions, users CASCADE;"
+        )
         await conn.execute(sql)
         print("DB Schema successfully applied!")
     except Exception as e:

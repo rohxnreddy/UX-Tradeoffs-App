@@ -45,6 +45,7 @@ class _ResultsScreenState extends State<ResultsScreen>
     TestId.pesq: AppTheme.pesqColor,
     TestId.iqa: AppTheme.iqaColor,
     TestId.battery: AppTheme.battColor,
+    TestId.network: AppTheme.accent,
   };
 
   static const _testIcons = {
@@ -53,6 +54,7 @@ class _ResultsScreenState extends State<ResultsScreen>
     TestId.pesq: Icons.record_voice_over_outlined,
     TestId.iqa: Icons.image_outlined,
     TestId.battery: Icons.battery_charging_full_outlined,
+    TestId.network: Icons.network_check_outlined,
   };
 
   static const _testNames = {
@@ -61,6 +63,7 @@ class _ResultsScreenState extends State<ResultsScreen>
     TestId.pesq: 'Voice Clarity',
     TestId.iqa: 'Camera Quality',
     TestId.battery: 'Battery Health',
+    TestId.network: 'Network',
   };
 
   int get _passCount =>

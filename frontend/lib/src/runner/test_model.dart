@@ -1,6 +1,6 @@
 // lib/src/runner/test_model.dart
 
-enum TestId { vmaf, peaq, pesq, iqa, battery }
+enum TestId { vmaf, peaq, pesq, iqa, battery, network }
 
 class TestDefinition {
   final TestId id;
@@ -53,6 +53,13 @@ const List<TestDefinition> allTests = [
     subtitle:         'Drain score under stress',
     iconPath:         'battery_charging_full',
     estimatedSeconds: 45,
+  ),
+  TestDefinition(
+    id:               TestId.network,
+    title:            'Network',
+    subtitle:         'Latency variance over suite',
+    iconPath:         'network_check',
+    estimatedSeconds: 10,
   ),
 ];
 

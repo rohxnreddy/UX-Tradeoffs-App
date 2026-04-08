@@ -20,6 +20,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math';
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:http/http.dart' as http;
@@ -62,6 +63,7 @@ class BatteryRunner {
   Future<TestResult> run() async {
     final battery = Battery();
     final isolates = <Isolate>[];
+    final client = http.Client();
 
     _emit('Taking battery snapshot…', 0.05);
     final startLevel = await battery.batteryLevel;
@@ -70,31 +72,39 @@ class BatteryRunner {
 
     _emit('Starting CPU + network stress…', 0.10);
     final cores = Platform.numberOfProcessors;
-    final target = cores > 2 ? 2 : 1;
+    // Aggressive load: saturate most cores but keep the device responsive.
+    final target = min(max(1, cores - 1), 8);
     for (int i = 0; i < target; i++) {
       isolates.add(await Isolate.spawn(_cpuBurn, null));
     }
 
     Timer? netTimer;
-    netTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
-      http
+    var inflight = 0;
+    const maxInflight = 4;
+    netTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (inflight >= maxInflight) return;
+      inflight++;
+      client
           .get(Uri.parse('https://speed.hetzner.de/1MB.bin'))
-          .catchError((_) => http.Response('', 599));
+          .catchError((_) => http.Response('', 599))
+          .whenComplete(() => inflight--);
     });
 
-    const totalSeconds = 45;
+    const totalSeconds = 60;
     const stepSeconds = 5;
     const steps = totalSeconds ~/ stepSeconds;
 
     for (int i = 0; i < steps; i++) {
       await Future.delayed(const Duration(seconds: stepSeconds));
       _emit(
-        'Stress running… ${(i + 1) * stepSeconds}s / ${totalSeconds}s',
+        'Stress running… ${(i + 1) * stepSeconds}s / ${totalSeconds}s '
+            '(CPU isolates: $target, net inflight ≤ $maxInflight)',
         0.10 + 0.80 * ((i + 1) / steps),
       );
     }
 
     netTimer.cancel();
+    client.close();
     for (final iso in isolates) iso.kill(priority: Isolate.immediate);
 
     _emit('Computing drain score…', 0.95);
@@ -108,11 +118,11 @@ class BatteryRunner {
       id: TestId.battery,
       status: TestStatus.done,
       scores: {
-        'Start Level': '$startLevel% (${startState.name})',
-        'End Level': '$endLevel% (${endState.name})',
-        'Drain': '$drop%',
-        'Duration': '${elapsed.toStringAsFixed(1)} min',
-        'Drain Score': '${drainRate.toStringAsFixed(3)} %/min',
+        'Stress Start': '$startLevel% (${startState.name})',
+        'Stress End': '$endLevel% (${endState.name})',
+        'Stress Drop': '$drop%',
+        'Stress Duration': '${elapsed.toStringAsFixed(1)} min',
+        'Stress Drain Score': '${drainRate.toStringAsFixed(3)} %/min',
       },
       completedAt: DateTime.now(),
     );

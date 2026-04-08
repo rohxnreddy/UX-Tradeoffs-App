@@ -515,3 +515,109 @@ async def insert_iqa_results(
             ids.append(row["id"])
 
     return ids
+
+
+# ─── 7. Battery / Network suite summaries ─────────────────────────────────────
+
+async def insert_battery_result(*, session_id, payload: dict):
+    """
+    Insert one battery suite summary row.
+    payload is expected to be the JSON body from POST /battery/result.
+    """
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        INSERT INTO battery_results (
+            session_id,
+            suite_started_at, suite_ended_at,
+            battery_start_level, battery_end_level,
+            battery_start_state, battery_end_state,
+            overall_drop, overall_drain_rate,
+            min_level_observed, max_level_observed,
+            raw_output
+        )
+        VALUES (
+            $1,
+            $2, $3,
+            $4, $5,
+            $6, $7,
+            $8, $9,
+            $10, $11,
+            $12::jsonb
+        )
+        RETURNING id
+        """,
+        session_id,
+        _parse_dt(payload.get("suite_started_at")),
+        _parse_dt(payload.get("suite_ended_at")),
+        payload.get("battery_start_level"),
+        payload.get("battery_end_level"),
+        payload.get("battery_start_state"),
+        payload.get("battery_end_state"),
+        payload.get("overall_drop"),
+        payload.get("overall_drain_rate"),
+        payload.get("min_level_observed"),
+        payload.get("max_level_observed"),
+        _jsonb(payload.get("raw_output")),
+    )
+    return row["id"]
+
+
+async def insert_network_result(*, session_id, payload: dict):
+    """
+    Insert one network suite summary row.
+    payload is expected to be the JSON body from POST /network/result.
+    """
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        INSERT INTO network_results (
+            session_id,
+            suite_started_at, suite_ended_at,
+            sample_interval_seconds, sample_count,
+            avg_latency_ms, variance_latency_ms2, stddev_latency_ms, jitter_ms,
+            min_latency_ms, max_latency_ms, p50_latency_ms, p95_latency_ms,
+            loss_rate_pct, avg_download_mbps, stddev_download_mbps,
+            conn_type_start, conn_type_end, conn_changes,
+            probe_attempts, probe_failures,
+            samples, throughput_samples, raw_output
+        )
+        VALUES (
+            $1,
+            $2, $3,
+            $4, $5,
+            $6, $7, $8, $9,
+            $10, $11, $12, $13,
+            $14, $15, $16,
+            $17, $18, $19,
+            $20, $21,
+            $22::jsonb, $23::jsonb, $24::jsonb
+        )
+        RETURNING id
+        """,
+        session_id,
+        _parse_dt(payload.get("suite_started_at")),
+        _parse_dt(payload.get("suite_ended_at")),
+        payload.get("sample_interval_seconds"),
+        payload.get("sample_count"),
+        payload.get("avg_latency_ms"),
+        payload.get("variance_latency_ms2"),
+        payload.get("stddev_latency_ms"),
+        payload.get("jitter_ms"),
+        payload.get("min_latency_ms"),
+        payload.get("max_latency_ms"),
+        payload.get("p50_latency_ms"),
+        payload.get("p95_latency_ms"),
+        payload.get("loss_rate_pct"),
+        payload.get("avg_download_mbps"),
+        payload.get("stddev_download_mbps"),
+        payload.get("conn_type_start"),
+        payload.get("conn_type_end"),
+        payload.get("conn_changes"),
+        payload.get("probe_attempts"),
+        payload.get("probe_failures"),
+        _jsonb(payload.get("samples")),
+        _jsonb(payload.get("throughput_samples")),
+        _jsonb(payload.get("raw_output")),
+    )
+    return row["id"]

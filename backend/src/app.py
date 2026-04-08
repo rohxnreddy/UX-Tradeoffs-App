@@ -15,7 +15,7 @@ from src.peaq.peaq import compute_peaq_odg, PEAQError
 from src.pesq.pesq import compute_pesq, PESQError
 from src.webrtc.codec_call import make_webrtc_call, make_device_webrtc_call
 from src.IMA.IMA import compute_iqa
-from src.db.schemas import DeviceMeta
+from src.db.schemas import DeviceMeta, BatteryResultIn, NetworkResultIn
 
 from src.db.database import init_pool, close_pool
 from src.db import repository as db
@@ -109,6 +109,40 @@ async def receive_metadata(meta: DeviceMeta):
             "phone_acquisition": meta.phone_acquisition,
         },
     }
+
+
+# ─── Battery / Network suite summaries ────────────────────────────────────────
+
+@app.post("/battery/result")
+async def receive_battery_result(
+    payload: BatteryResultIn,
+    x_session_id: Optional[str] = Header(None),
+):
+    session_id = _parse_session_id(x_session_id)
+    if session_id is None:
+        raise HTTPException(400, "Missing or invalid X-Session-Id")
+
+    record_id = await db.insert_battery_result(
+        session_id=session_id,
+        payload=payload.model_dump(),
+    )
+    return {"status": "ok", "record_id": str(record_id)}
+
+
+@app.post("/network/result")
+async def receive_network_result(
+    payload: NetworkResultIn,
+    x_session_id: Optional[str] = Header(None),
+):
+    session_id = _parse_session_id(x_session_id)
+    if session_id is None:
+        raise HTTPException(400, "Missing or invalid X-Session-Id")
+
+    record_id = await db.insert_network_result(
+        session_id=session_id,
+        payload=payload.model_dump(),
+    )
+    return {"status": "ok", "record_id": str(record_id)}
 
 
 # ─── Session lookup ───────────────────────────────────────────────────────────

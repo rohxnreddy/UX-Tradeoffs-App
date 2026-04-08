@@ -48,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen>
     TestId.pesq: 'Voice Clarity',
     TestId.iqa: 'Camera Quality',
     TestId.battery: 'Battery Health',
+    TestId.network: 'Network',
   };
 
   static const _testColors = {
@@ -56,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen>
     TestId.pesq: AppTheme.pesqColor,
     TestId.iqa: AppTheme.iqaColor,
     TestId.battery: AppTheme.battColor,
+    TestId.network: AppTheme.accent,
   };
 
   static const _testIcons = {
@@ -64,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen>
     TestId.pesq: Icons.record_voice_over_outlined,
     TestId.iqa: Icons.image_outlined,
     TestId.battery: Icons.battery_charging_full_outlined,
+    TestId.network: Icons.network_check_outlined,
   };
 
   int get _totalEst => allTests

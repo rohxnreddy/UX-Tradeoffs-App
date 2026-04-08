@@ -260,3 +260,73 @@ CREATE TABLE IF NOT EXISTS iqa_results (
 
 CREATE INDEX IF NOT EXISTS idx_iqa_session    ON iqa_results (session_id);
 CREATE INDEX IF NOT EXISTS idx_iqa_created_at ON iqa_results (created_at DESC);
+
+
+-- ─── 7. BATTERY RESULTS ───────────────────────────────────────────────────────
+--  One row per full test-suite run (suite-level + stress-window summary).
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS battery_results (
+    id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id              UUID        REFERENCES sessions (id) ON DELETE SET NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    -- Suite window (across all tests)
+    suite_started_at        TIMESTAMPTZ,
+    suite_ended_at          TIMESTAMPTZ,
+    battery_start_level     INT,
+    battery_end_level       INT,
+    battery_start_state     TEXT,
+    battery_end_state       TEXT,
+    overall_drop            INT,
+    overall_drain_rate      NUMERIC(10,6),
+    min_level_observed      INT,
+    max_level_observed      INT,
+
+    -- Optional: store the UI payload as raw JSON
+    raw_output              JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_battery_session    ON battery_results (session_id);
+CREATE INDEX IF NOT EXISTS idx_battery_created_at ON battery_results (created_at DESC);
+
+
+-- ─── 8. NETWORK RESULTS ───────────────────────────────────────────────────────
+--  One row per full test-suite run; contains latency samples over time.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS network_results (
+    id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id              UUID        REFERENCES sessions (id) ON DELETE SET NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    suite_started_at        TIMESTAMPTZ,
+    suite_ended_at          TIMESTAMPTZ,
+
+    sample_interval_seconds INT,
+    sample_count            INT,
+
+    avg_latency_ms          NUMERIC(10,4),
+    variance_latency_ms2    NUMERIC(14,4),
+    stddev_latency_ms       NUMERIC(10,4),
+    jitter_ms               NUMERIC(10,4),
+
+    -- Additional quality indicators
+    min_latency_ms          NUMERIC(10,4),
+    max_latency_ms          NUMERIC(10,4),
+    p50_latency_ms          NUMERIC(10,4),
+    p95_latency_ms          NUMERIC(10,4),
+    loss_rate_pct           NUMERIC(10,4),
+    avg_download_mbps       NUMERIC(10,4),
+    stddev_download_mbps    NUMERIC(10,4),
+    conn_type_start         TEXT,
+    conn_type_end           TEXT,
+    conn_changes            INT,
+    probe_attempts          INT,
+    probe_failures          INT,
+
+    samples                 JSONB,
+    throughput_samples      JSONB,
+    raw_output              JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_session    ON network_results (session_id);
+CREATE INDEX IF NOT EXISTS idx_network_created_at ON network_results (created_at DESC);

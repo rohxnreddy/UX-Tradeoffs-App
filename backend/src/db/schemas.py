@@ -107,3 +107,43 @@ class DeviceMeta(BaseModel):
 
     # ── Audio ─────────────────────────────────────────────────────────────────
     audio_output_route: Optional[str] = None
+
+
+class BatteryResultIn(BaseModel):
+    suite_started_at: Optional[str] = None
+    suite_ended_at: Optional[str] = None
+    battery_start_level: Optional[int] = None
+    battery_end_level: Optional[int] = None
+    battery_start_state: Optional[str] = None
+    battery_end_state: Optional[str] = None
+    overall_drop: Optional[int] = None
+    overall_drain_rate: Optional[float] = None
+    min_level_observed: Optional[int] = None
+    max_level_observed: Optional[int] = None
+    raw_output: Optional[dict] = None
+
+
+class NetworkResultIn(BaseModel):
+    suite_started_at: Optional[str] = None
+    suite_ended_at: Optional[str] = None
+    sample_interval_seconds: Optional[int] = None
+    sample_count: Optional[int] = None
+    avg_latency_ms: Optional[float] = None
+    variance_latency_ms2: Optional[float] = None
+    stddev_latency_ms: Optional[float] = None
+    jitter_ms: Optional[float] = None
+    min_latency_ms: Optional[float] = None
+    max_latency_ms: Optional[float] = None
+    p50_latency_ms: Optional[float] = None
+    p95_latency_ms: Optional[float] = None
+    loss_rate_pct: Optional[float] = None
+    avg_download_mbps: Optional[float] = None
+    stddev_download_mbps: Optional[float] = None
+    conn_type_start: Optional[str] = None
+    conn_type_end: Optional[str] = None
+    conn_changes: Optional[int] = None
+    probe_attempts: Optional[int] = None
+    probe_failures: Optional[int] = None
+    samples: Optional[list] = None
+    throughput_samples: Optional[list] = None
+    raw_output: Optional[dict] = None
