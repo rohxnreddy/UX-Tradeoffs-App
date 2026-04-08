@@ -1,7 +1,10 @@
 import streamlit as st
 import os
+import cv2
+import shutil
 from pathlib import Path
 from datetime import datetime
+from PIL import Image
 
 # ─── PATH SETUP ─────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -20,6 +23,17 @@ st.markdown("""
     .stApp {
         background-color: #0e1117;
         color: #e0e0e0;
+    }
+
+    /* Reduce Top Padding */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 0rem !important;
+    }
+
+    /* Hide Header */
+    header {
+        visibility: hidden;
     }
     
     /* Global Text visibility */
@@ -99,7 +113,7 @@ st.markdown("""
         padding-top: 0 !important;
     }
 
-    /* Vertical Divider between Catalog and Visualizer */
+    /* Vertical Divider between Files and Visualizer */
     [data-testid="column"]:first-child {
         border-right: 1px solid #30363d !important;
         padding-right: 2rem !important;
@@ -169,9 +183,11 @@ except Exception as e:
     st.error(f"Access Denied: {e}")
     st.stop()
 
-file_search = st.sidebar.text_input("Filter Catalog", placeholder="Enter query...")
+file_search = st.sidebar.text_input("Filter Files", placeholder="Enter query...")
 if file_search:
     files = [f for f in files if file_search.lower() in f.name.lower()]
+
+st.sidebar.markdown(f"**Selected Category Records:** {len(files)}")
 
 if not files:
     st.sidebar.warning("No records matched filters.")
@@ -183,7 +199,7 @@ col_inventory, col_visualizer = st.columns([1, 1], gap="medium")
 
 # LEFT 1/2: INVENTORY (Full Height via Container)
 with col_inventory:
-    st.subheader("Record Catalog")
+    st.subheader("Files")
     with st.container(height=750, border=False):
         selected_filename = st.radio(
             label="Select a record",
@@ -232,6 +248,29 @@ with col_visualizer:
             st.markdown(f'<p class="detail-label">File Size</p><p class="detail-value">{file_size_mb:.3f} MB</p>', unsafe_allow_html=True)
         with c2:
             st.markdown(f'<p class="detail-label">Last Modified</p><p class="detail-value">{mod_time}</p>', unsafe_allow_html=True)
+            if ext in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
+                try:
+                    with Image.open(file_path) as img:
+                        w, h = img.size
+                        st.markdown(f'<p class="detail-label">Resolution</p><p class="detail-value">{w} × {h}</p>', unsafe_allow_html=True)
+                except:
+                    pass
+            elif ext in [".mp4", ".mov", ".avi", ".mkv"]:
+                try:
+                    cap = cv2.VideoCapture(str(file_path))
+                    if cap.isOpened():
+                        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        fps = cap.get(cv2.CAP_PROP_FPS)
+                        frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                        duration = frames / fps if fps > 0 else 0
+                        
+                        st.markdown(f'<p class="detail-label">Resolution</p><p class="detail-value">{w} × {h}</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p class="detail-label">Frame Rate</p><p class="detail-value">{fps:.2f} FPS</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p class="detail-label">Duration</p><p class="detail-value">{duration:.2f} seconds</p>', unsafe_allow_html=True)
+                    cap.release()
+                except:
+                    pass
             st.markdown(f'<p class="detail-label">Cluster Location</p><p class="detail-value">storage://{category_folder}/</p>', unsafe_allow_html=True)
 
         with open(file_path, "rb") as f:
@@ -242,4 +281,19 @@ with col_visualizer:
                 mime="application/octet-stream"
             )
 
-st.sidebar.markdown(f"**Total Managed Records:** {len(files)}")
+st.sidebar.divider()
+st.sidebar.markdown("### Storage Status")
+try:
+    total, used, free = shutil.disk_usage("/")
+    percent_used = (used / total) * 100
+    
+    # Calculate Data Directory Size
+    data_size_bytes = sum(f.stat().st_size for f in DATA_DIR.glob('**/*') if f.is_file())
+    data_size_mb = data_size_bytes / (1024 * 1024)
+    
+    st.sidebar.markdown(f"**Data Folder Size:** {data_size_mb:.2f} MB")
+    st.sidebar.markdown(f"**Total Disk:** {total // (2**30)} GB")
+    st.sidebar.markdown(f"**Free Space:** {free // (2**30)} GB")
+    st.sidebar.progress(percent_used / 100, text=f"{percent_used:.1f}% Used")
+except Exception as e:
+    st.sidebar.error("Storage metrics unavailable.")
