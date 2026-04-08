@@ -190,15 +190,23 @@ def encode_decode_opus(input_wav: Path, bitrate: int = 32000) -> Path:
     output_wav.close()
 
     # Encode to Opus (WebRTC standard wideband codec)
-    _run_ffmpeg([
+    # Try with -application voip first (VoIP mode, optimized for speech).
+    # Some FFmpeg builds don't expose this libopus private option, so fall
+    # back to the default application mode ("audio") if it fails.
+    base_cmd = [
         "ffmpeg", "-y", "-i", str(input_wav),
         "-c:a", "libopus",
         "-b:a", str(bitrate),
         "-ar", "48000",         # Opus operates at 48 kHz internally
         "-ac", "1",
-        "-application", "voip", # VoIP mode (optimized for speech)
-        opus_file.name,
-    ])
+    ]
+    try:
+        _run_ffmpeg(base_cmd + ["-application", "voip", opus_file.name])
+    except RuntimeError as exc:
+        if "application" in str(exc).lower():
+            _run_ffmpeg(base_cmd + [opus_file.name])
+        else:
+            raise
 
     # Decode back to PCM WAV at 16 kHz (standard wideband output)
     _run_ffmpeg([
