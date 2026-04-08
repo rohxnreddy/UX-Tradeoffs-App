@@ -85,6 +85,11 @@ class _PesqTestPageState extends State<PesqTestPage>
       await File(refPath).writeAsBytes(audioRes.bodyBytes);
 
       _update('Playing voice sample — keep the phone unblocked.', 0.20);
+      // Enable speaker BEFORE starting the recorder so the audio-mode
+      // change (MODE_IN_COMMUNICATION) doesn't interrupt an active
+      // recording session.
+      await SpeakerControl.enableSpeaker();
+      await Future.delayed(const Duration(milliseconds: 300));
       await _recorder.start(
         const RecordConfig(
           encoder:            AudioEncoder.wav,
@@ -101,7 +106,6 @@ class _PesqTestPageState extends State<PesqTestPage>
         path: recordingPath,
       );
       await Future.delayed(const Duration(milliseconds: 300));
-      await SpeakerControl.enableSpeaker();
       await _refPlayer.setFilePath(refPath);
       await _refPlayer.setVolume(1.0);
       await _refPlayer.play();

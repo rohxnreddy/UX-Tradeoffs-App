@@ -126,6 +126,11 @@ class _PeaqTestPageState extends State<PeaqTestPage>
 
       // 3. Play reference & record degraded simultaneously
       _update('Playing audio — keep the phone still and speaker unblocked.', 0.40);
+      // Enable speaker BEFORE starting the recorder so the audio-mode
+      // change (MODE_IN_COMMUNICATION) doesn't interrupt an active
+      // recording session.
+      await SpeakerControl.enableSpeaker();
+      await Future.delayed(const Duration(milliseconds: 300));
       await _recorder.start(
         const RecordConfig(
           encoder: AudioEncoder.wav,
@@ -141,7 +146,6 @@ class _PeaqTestPageState extends State<PeaqTestPage>
         path: degradedPath,
       );
       await Future.delayed(const Duration(milliseconds: 650));
-      await SpeakerControl.enableSpeaker();
       await _refPlayer.setFilePath(refPath);
       await _refPlayer.setVolume(1.0);
       await _refPlayer.play();

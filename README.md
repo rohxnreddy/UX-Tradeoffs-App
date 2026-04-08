@@ -162,6 +162,15 @@ flutter devices
 flutter run -d android
 ```
 
+## 📜 Third-Party Attribution
+
+This project uses audio assets that require attribution. The PEAQ reference
+audio ([Allegro in C major, K.1b](https://musopen.org/music/?length__lt=1))
+is provided by [Musopen](https://musopen.org) under the
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) license.
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for full details.
+
 
 
 
