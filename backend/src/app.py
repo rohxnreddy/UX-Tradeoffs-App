@@ -55,6 +55,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# Global lock to ensure only one IQA test runs at a time on the entire server.
+# This prevents OOM (Out of Memory) crashes when multiple users or images are processed.
+iqa_lock = asyncio.Lock()
+
 
 def _parse_session_id(raw: Optional[str]) -> Optional[UUID]:
     if not raw:
@@ -412,62 +416,60 @@ async def calculate_iqa(
     x_session_id: Optional[str] = Header(None),
 ):
     session_id = _parse_session_id(x_session_id)
-
     if not images:
         raise HTTPException(400, "No files uploaded")
 
-    temp_paths: list[Path]          = []
-    filenames:  list[Optional[str]] = []
-    file_sizes: list[Optional[int]] = []
+    final_results = []
 
-    try:
-        for image in images:
-            contents = await image.read()
-            if not contents:
-                raise HTTPException(400, f"Empty file: {image.filename}")
+    # Use a global lock to ensure only ONE image is processed across the whole server at once.
+    # This completely prevents OOM from concurrent requests on low-RAM servers.
+    async with iqa_lock:
+        for idx, image in enumerate(images):
+            temp_path = None
+            filename = image.filename or f"img_{idx}.jpg"
+            try:
+                suffix = Path(filename).suffix or ".jpg"
+                
+                # 1. Stream to Disk (don't load into RAM)
+                with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    # shutil.copyfileobj streams data, keeping memory usage constant.
+                    await run_in_threadpool(shutil.copyfileobj, image.file, tmp)
+                    temp_path = Path(tmp.name)
+                
+                file_size = temp_path.stat().st_size
+                if file_size == 0:
+                    raise HTTPException(400, f"Empty file: {filename}")
 
-            suffix = Path(image.filename or "").suffix or ".jpg"
-            filenames.append(image.filename)
-            file_sizes.append(len(contents))
+                # 2. Compute IQA Score (Sequential within the loop)
+                scores = await run_in_threadpool(compute_iqa, temp_path)
+                
+                res_dict = {
+                    "image_index": idx,
+                    "brisque":     round(scores["brisque"], 2),
+                    "niqe":        round(scores["niqe"],    2),
+                    "piqe":        round(scores["piqe"],    2),
+                }
 
-            with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp.write(contents)
-                temp_paths.append(Path(tmp.name))
+                # 3. Insert into DB (single row batch)
+                record_ids = await db.insert_iqa_results(
+                    session_id=session_id,
+                    filenames=[filename],
+                    file_sizes=[file_size],
+                    results=[res_dict],
+                )
+                rid = record_ids[0]
 
-        all_scores = []
-        for path in temp_paths:
-            score = await run_in_threadpool(compute_iqa, path)
-            all_scores.append(score)
-
-        # 1. Insert records to get IDs
-        response_base: list[dict] = []
-        for idx, scores in enumerate(all_scores):
-            response_base.append({
-                "image_index": idx,
-                "brisque":     round(scores["brisque"], 2),
-                "niqe":        round(scores["niqe"],    2),
-                "piqe":        round(scores["piqe"],    2),
-            })
-
-        record_ids = await db.insert_iqa_results(
-            session_id=session_id,
-            filenames=filenames,
-            file_sizes=file_sizes,
-            results=response_base,
-        )
-
-        # 2. Move files and update paths
-        final_results = []
-        for idx, (rid, tmp_path) in enumerate(zip(record_ids, temp_paths)):
-            storage_path = await _move_to_storage(tmp_path, session_id, rid, filenames[idx] or f"img_{idx}.jpg", "iqa")
-            await (await db.get_pool()).execute(
-                "UPDATE iqa_results SET storage_path = $1 WHERE id = $2",
-                storage_path, rid
-            )
-            final_results.append({**response_base[idx], "record_id": str(rid), "storage_path": storage_path})
-
-        return {"results": final_results}
-
-    finally:
-        for path in temp_paths:
-            if path.exists(): path.unlink(missing_ok=True)
+                # 4. Move to Storage
+                storage_path = await _move_to_storage(temp_path, session_id, rid, filename, "iqa")
+                await (await db.get_pool()).execute(
+                    "UPDATE iqa_results SET storage_path = $1 WHERE id = $2",
+                    storage_path, rid
+                )
+                
+                final_results.append({**res_dict, "record_id": str(rid), "storage_path": storage_path})
+                
+            finally:
+                if temp_path and temp_path.exists():
+                    temp_path.unlink(missing_ok=True)
+                    
+    return {"results": final_results}
