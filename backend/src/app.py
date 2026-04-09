@@ -434,8 +434,10 @@ async def calculate_iqa(
                 tmp.write(contents)
                 temp_paths.append(Path(tmp.name))
 
-        tasks      = [run_in_threadpool(compute_iqa, path) for path in temp_paths]
-        all_scores = await asyncio.gather(*tasks)
+        all_scores = []
+        for path in temp_paths:
+            score = await run_in_threadpool(compute_iqa, path)
+            all_scores.append(score)
 
         # 1. Insert records to get IDs
         response_base: list[dict] = []
