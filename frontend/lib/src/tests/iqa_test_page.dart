@@ -286,7 +286,7 @@ class _IqaTestPageState extends State<IqaTestPage>
 
       widget.onProgressUpdate('Analysing your photos…', 0.75);
       final streamed =
-      await req.send().timeout(const Duration(minutes: 2));
+      await req.send().timeout(const Duration(minutes: 10));
       final body = await streamed.stream.bytesToString();
 
       if (streamed.statusCode != 200) {
