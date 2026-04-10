@@ -271,13 +271,42 @@ class _ResultCard extends StatelessWidget {
     required this.icon,
   });
 
-  String? _getInterpretation(TestId id, dynamic value) {
+  String? _getInterpretation(TestId id, dynamic value, {String? key}) {
     if (value == null || value == 'N/A') return null;
     final valStr = value.toString();
     final doubleVal = double.tryParse(valStr);
     if (doubleVal == null) return null;
 
-    if (id == TestId.peaq) {
+    if (id == TestId.vmaf) {
+      if (doubleVal >= 93) return 'Excellent';
+      if (doubleVal >= 80) return 'Good';
+      if (doubleVal >= 60) return 'Fair';
+      if (doubleVal >= 40) return 'Poor';
+      return 'Bad';
+    } else if (id == TestId.iqa) {
+      final metric = key?.toLowerCase() ?? '';
+      // No-reference metrics: lower is better
+      if (metric == 'brisque' || metric == 'niqe' || metric == 'piqe') {
+        final thresholds = {
+          'brisque': [20.0, 40.0, 60.0, 80.0],
+          'niqe': [3.5, 5.5, 7.5, 10.0],
+          'piqe': [25.0, 45.0, 60.0, 80.0],
+        }[metric]!;
+        if (doubleVal <= thresholds[0]) return 'Excellent';
+        if (doubleVal <= thresholds[1]) return 'Good';
+        if (doubleVal <= thresholds[2]) return 'Fair';
+        if (doubleVal <= thresholds[3]) return 'Poor';
+        return 'Bad';
+      }
+      // Camera Score / CDI: higher is better
+      if (metric.contains('score')) {
+        if (doubleVal >= 85) return 'Excellent';
+        if (doubleVal >= 70) return 'Good';
+        if (doubleVal >= 55) return 'Fair';
+        if (doubleVal >= 40) return 'Poor';
+        return 'Bad';
+      }
+    } else if (id == TestId.peaq) {
       if (doubleVal >= -0.5) return 'Imperceptible degradation';
       if (doubleVal >= -1.0) return 'Perceptible but not annoying';
       if (doubleVal >= -2.0) return 'Slightly annoying';
@@ -350,7 +379,7 @@ class _ResultCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: result.scores.entries.map((e) {
-                  final interp = _getInterpretation(result.id, e.value);
+                  final interp = _getInterpretation(result.id, e.value, key: e.key);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
