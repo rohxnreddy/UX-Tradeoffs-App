@@ -321,7 +321,7 @@ class _VmafTestPageState extends State<VmafTestPage>
       );
 
       final streamed = await request.send().timeout(
-        const Duration(minutes: 10),
+        const Duration(minutes: 5),
         onTimeout: () => throw Exception('Upload timed out.'),
       );
       final body = await streamed.stream.bytesToString();
