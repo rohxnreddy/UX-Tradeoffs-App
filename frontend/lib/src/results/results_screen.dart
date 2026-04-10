@@ -271,6 +271,27 @@ class _ResultCard extends StatelessWidget {
     required this.icon,
   });
 
+  String? _getInterpretation(TestId id, dynamic value) {
+    if (value == null || value == 'N/A') return null;
+    final valStr = value.toString();
+    final doubleVal = double.tryParse(valStr);
+    if (doubleVal == null) return null;
+
+    if (id == TestId.peaq) {
+      if (doubleVal >= -0.5) return 'Imperceptible degradation';
+      if (doubleVal >= -1.0) return 'Perceptible but not annoying';
+      if (doubleVal >= -2.0) return 'Slightly annoying';
+      if (doubleVal >= -3.0) return 'Annoying';
+      return 'Very annoying degradation';
+    } else if (id == TestId.pesq) {
+      if (doubleVal >= 4.0) return 'Excellent quality';
+      if (doubleVal >= 3.0) return 'Good quality';
+      if (doubleVal >= 2.0) return 'Poor quality';
+      return 'Very poor quality';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isOk = result.status == TestStatus.done;
@@ -327,33 +348,52 @@ class _ResultCard extends StatelessWidget {
                 border: Border.all(color: color.withOpacity(0.12)),
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: result.scores.entries.map((e) {
+                  final interp = _getInterpretation(result.id, e.value);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(
-                          child: Text(
-                            e.key,
-                            style: const TextStyle(
-                              color: AppTheme.textSec,
-                              fontSize: 12,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                e.key,
+                                style: const TextStyle(
+                                  color: AppTheme.textSec,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            Flexible(
+                              child: Text(
+                                e.value.toString(),
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Flexible(
-                          child: Text(
-                            e.value.toString(),
+                        if (interp != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            interp,
                             textAlign: TextAlign.right,
                             style: TextStyle(
-                              color: color,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
+                              color: color.withOpacity(0.8),
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   );
