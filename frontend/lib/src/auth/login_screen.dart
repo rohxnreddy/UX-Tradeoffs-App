@@ -116,24 +116,23 @@ class _LoginScreenState extends State<LoginScreen>
 
                 // Premium Icon
                 Container(
-                  width: 80,
-                  height: 80,
+                  width: 90,
+                  height: 90,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppTheme.surface,
-                    border: Border.all(color: AppTheme.border, width: 1.5),
+                    color: Colors.white,
+                    image: const DecorationImage(
+                      image: AssetImage('assets/icon.png'),
+                      fit: BoxFit.cover,
+                    ),
+                    border: Border.all(color: AppTheme.border, width: 2),
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.accent.withOpacity(0.2),
+                        color: AppTheme.accent.withOpacity(0.25),
                         blurRadius: 40,
-                        spreadRadius: 5,
+                        spreadRadius: 8,
                       ),
                     ],
-                  ),
-                  child: const Icon(
-                    Icons.fingerprint,
-                    color: AppTheme.accent,
-                    size: 38,
                   ),
                 ),
 
@@ -493,7 +492,7 @@ class _GoogleButton extends StatelessWidget {
               : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _GoogleIcon(),
+                    Image.asset('assets/google.webp', width: 22, height: 22),
                     const SizedBox(width: 14),
                     const Text(
                       'Continue with Google',
@@ -510,51 +509,4 @@ class _GoogleButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _GoogleIcon extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 22,
-      height: 22,
-      child: CustomPaint(painter: _GooglePainter()),
-    );
-  }
-}
-
-class _GooglePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final r = size.width / 2;
-
-    final colors = [
-      const Color(0xFF4285F4),
-      const Color(0xFF34A853),
-      const Color(0xFFFBBC05),
-      const Color(0xFFEA4335),
-    ];
-
-    for (int i = 0; i < 4; i++) {
-      canvas.drawArc(
-        Rect.fromCircle(center: Offset(cx, cy), radius: r),
-        i * (3.14159 / 2),
-        3.14159 / 2,
-        true,
-        Paint()..color = colors[i],
-      );
-    }
-
-    // Inner white circle to create the "G" ring effect
-    canvas.drawCircle(
-      Offset(cx, cy),
-      r * 0.55,
-      Paint()..color = AppTheme.surface, // Matches the button background
-    );
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
 }

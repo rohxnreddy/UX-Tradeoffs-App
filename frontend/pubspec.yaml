@@ -89,6 +89,8 @@ flutter:
   assets:
     - .env
     - assets/video/
+    - assets/icon.png
+    - assets/google.webp
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

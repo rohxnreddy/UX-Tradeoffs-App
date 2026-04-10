@@ -55,35 +55,42 @@ class _SplashScreenState extends State<SplashScreen>
                 children: [
                   // Logo mark
                   Container(
-                    width: 88,
-                    height: 88,
+                    width: 100,
+                    height: 100,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppTheme.surface,
-                      border: Border.all(color: AppTheme.border, width: 1.5),
+                      color: Colors.white,
+                      image: const DecorationImage(
+                        image: AssetImage('assets/icon.png'),
+                        fit: BoxFit.cover,
+                      ),
+                      border: Border.all(color: AppTheme.border, width: 2),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.accent.withOpacity(0.18),
+                          color: AppTheme.accent.withOpacity(0.2),
                           blurRadius: 40,
-                          spreadRadius: 4,
+                          spreadRadius: 6,
                         ),
                       ],
-                    ),
-                    child: const Icon(
-                      Icons.analytics_outlined,
-                      color: AppTheme.accent,
-                      size: 40,
                     ),
                   ),
                   const SizedBox(height: 28),
                   // Title
-                  const Text(
-                    'UX TRADEOFFS',
-                    style: TextStyle(
-                      color: AppTheme.textPri,
+                  Text.rich(
+                    TextSpan(
+                      text: 'PHONE ',
+                      style: const TextStyle(color: AppTheme.bad),
+                      children: const [
+                        TextSpan(
+                          text: 'PATHOLOGY',
+                          style: TextStyle(color: AppTheme.textPri),
+                        ),
+                      ],
+                    ),
+                    style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
-                      letterSpacing: 5,
+                      letterSpacing: 3,
                     ),
                   ),
                   const SizedBox(height: 8),

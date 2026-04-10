@@ -30,7 +30,7 @@ class UxTradeoffApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'UX Tradeoffs',
+      title: 'Phone Pathology',
       theme: AppTheme.dark,
       home: const _AppRouter(),
     );
