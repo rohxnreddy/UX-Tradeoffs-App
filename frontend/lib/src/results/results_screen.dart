@@ -353,47 +353,46 @@ class _ResultCard extends StatelessWidget {
                   final interp = _getInterpretation(result.id, e.value);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                e.key,
-                                style: const TextStyle(
-                                  color: AppTheme.textSec,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Flexible(
-                              child: Text(
-                                e.value.toString(),
-                                textAlign: TextAlign.right,
-                                style: TextStyle(
-                                  color: color,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (interp != null) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            interp,
-                            textAlign: TextAlign.right,
-                            style: TextStyle(
-                              color: color.withOpacity(0.8),
-                              fontSize: 11,
-                              fontStyle: FontStyle.italic,
+                        Expanded(
+                          child: Text(
+                            e.key,
+                            style: const TextStyle(
+                              color: AppTheme.textSec,
+                              fontSize: 12,
                             ),
                           ),
-                        ],
+                        ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          flex: 2,
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: e.value.toString(),
+                                  style: TextStyle(
+                                    color: color,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                if (interp != null)
+                                  TextSpan(
+                                    text: '  $interp',
+                                    style: TextStyle(
+                                      color: color.withOpacity(0.8),
+                                      fontSize: 11,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
                       ],
                     ),
                   );
