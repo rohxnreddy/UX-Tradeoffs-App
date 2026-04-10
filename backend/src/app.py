@@ -410,7 +410,7 @@ async def webrtc_device_call(
 
 # ─── IQA ──────────────────────────────────────────────────────────────────────
 
-@app.post("/iqa/score")
+@app.post("/camara/score")
 async def calculate_iqa(
     images: list[UploadFile] = File(...),
     x_session_id: Optional[str] = Header(None),

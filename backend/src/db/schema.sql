@@ -227,7 +227,7 @@ CREATE INDEX IF NOT EXISTS idx_pesq_type       ON pesq_results (call_type);
 
 
 -- ─── 6. IQA RESULTS ──────────────────────────────────────────────────────────
---  One row per image within a POST /iqa/score batch call.
+--  One row per image within a POST /camara/score batch call.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS iqa_results (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

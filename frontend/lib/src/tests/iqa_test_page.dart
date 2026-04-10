@@ -4,7 +4,7 @@
 // Full guided flow:
 //   1. Detect rear and front cameras.
 //   2. User captures a photo from each camera via a full-screen preview.
-//   3. Both images are uploaded to POST /iqa/score.
+//   3. Both images are uploaded to POST /camara/score.
 //   4. Displays BRISQUE / NIQE / PIQE results per camera.
 //   5. Pops with a TestResult.
 //
@@ -271,7 +271,7 @@ class _IqaTestPageState extends State<IqaTestPage>
       if (_frontImage != null) entries.add(MapEntry('Front Camera', _frontImage!));
 
       final req = http.MultipartRequest(
-          'POST', Uri.parse('$_apiBase/iqa/score'));
+          'POST', Uri.parse('$_apiBase/camara/score'));
       if (_sessionId != null) req.headers['x-session-id'] = _sessionId!;
 
       for (final e in entries) {
