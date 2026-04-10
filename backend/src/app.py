@@ -412,37 +412,47 @@ async def webrtc_device_call(
 
 @app.post("/camara/score")
 async def calculate_iqa(
-    images: list[UploadFile] = File(...),
     x_session_id: Optional[str] = Header(None),
+    image_0: Optional[UploadFile] = File(None),
+    image_1: Optional[UploadFile] = File(None),
 ):
+    """Accept up to two camera images as individually-named multipart fields.
+
+    Using named fields (image_0, image_1) instead of a repeated 'images[]'
+    array ensures compatibility with proxy servers that reject repeated field
+    names in multipart requests — same pattern as /peaq/score and /pesq/score.
+    """
     session_id = _parse_session_id(x_session_id)
+
+    # Collect whichever images were provided
+    images = [(i, img) for i, img in enumerate([image_0, image_1]) if img is not None]
     if not images:
-        raise HTTPException(400, "No files uploaded")
+        raise HTTPException(400, "No files uploaded — send image_0 and/or image_1")
 
     final_results = []
 
     # Use a global lock to ensure only ONE image is processed across the whole server at once.
     # This completely prevents OOM from concurrent requests on low-RAM servers.
     async with iqa_lock:
-        for idx, image in enumerate(images):
+        for idx, image in images:
             temp_path = None
             filename = image.filename or f"img_{idx}.jpg"
             try:
                 suffix = Path(filename).suffix or ".jpg"
-                
+
                 # 1. Stream to Disk (don't load into RAM)
                 with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                     # shutil.copyfileobj streams data, keeping memory usage constant.
                     await run_in_threadpool(shutil.copyfileobj, image.file, tmp)
                     temp_path = Path(tmp.name)
-                
+
                 file_size = temp_path.stat().st_size
                 if file_size == 0:
                     raise HTTPException(400, f"Empty file: {filename}")
 
                 # 2. Compute IQA Score (Sequential within the loop)
                 scores = await run_in_threadpool(compute_iqa, temp_path)
-                
+
                 res_dict = {
                     "image_index": idx,
                     "brisque":     round(scores["brisque"], 2),
@@ -450,7 +460,7 @@ async def calculate_iqa(
                     "piqe":        round(scores["piqe"],    2),
                 }
 
-                # 3. Insert into DB (single row batch)
+                # 3. Insert into DB (single row per image)
                 record_ids = await db.insert_iqa_results(
                     session_id=session_id,
                     filenames=[filename],
@@ -465,11 +475,11 @@ async def calculate_iqa(
                     "UPDATE iqa_results SET storage_path = $1 WHERE id = $2",
                     storage_path, rid
                 )
-                
+
                 final_results.append({**res_dict, "record_id": str(rid), "storage_path": storage_path})
-                
+
             finally:
                 if temp_path and temp_path.exists():
                     temp_path.unlink(missing_ok=True)
-                    
+
     return {"results": final_results}
