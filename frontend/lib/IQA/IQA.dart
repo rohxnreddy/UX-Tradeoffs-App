@@ -235,13 +235,9 @@ class _IQAPageState extends State<IQAPage> {
 
     try {
       final req = http.MultipartRequest('POST', Uri.parse('$_apiBaseUrl/camara/score'));
-      for (int i = 0; i < toSend.length; i++) {
-        final resized = await ImageUtils.resizeImageForIQA(toSend[i].value);
-        req.files.add(await http.MultipartFile.fromPath(
-          'image_$i',
-          resized.path,
-          filename: '${toSend[i].key.replaceAll(' ', '_').toLowerCase()}.jpg',
-        ));
+      for (final e in toSend) {
+        final resized = await ImageUtils.resizeImageForIQA(e.value);
+        req.files.add(await http.MultipartFile.fromPath('images', resized.path));
       }
 
       final res  = await req.send();

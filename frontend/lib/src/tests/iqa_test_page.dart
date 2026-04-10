@@ -274,14 +274,14 @@ class _IqaTestPageState extends State<IqaTestPage>
           'POST', Uri.parse('$_apiBase/camara/score'));
       if (_sessionId != null) req.headers['x-session-id'] = _sessionId!;
 
-      for (int i = 0; i < entries.length; i++) {
-        final e = entries[i];
+      for (final e in entries) {
         final resized = await ImageUtils.resizeImageForIQA(e.value);
         req.files.add(await http.MultipartFile.fromPath(
-          'image_$i',
+          'images',
           resized.path,
           filename: '${e.key.replaceAll(' ', '_').toLowerCase()}.jpg',
         ));
+        req.fields['labels'] = e.key;
       }
 
       widget.onProgressUpdate('Analysing your photos…', 0.75);
