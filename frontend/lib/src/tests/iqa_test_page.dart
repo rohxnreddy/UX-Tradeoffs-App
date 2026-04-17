@@ -193,7 +193,7 @@ class _IqaTestPageState extends State<IqaTestPage>
 
   late AnimationController _pulseCtrl;
 
-  String  get _apiBase   => AppConfig.apiBaseUrl;
+  String  get _apiBase   => AppConfig.iqaApiBaseUrl;
   String? get _sessionId => SessionStore.instance.sessionId;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────

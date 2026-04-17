@@ -94,7 +94,9 @@ generated_plugin_registrant.dart
 # ========================
 # Environment files
 # ========================
-.env
+# .env (Uncommented to keep in GitHub)
+#!.env
+
 
 # ========================
 # Android
