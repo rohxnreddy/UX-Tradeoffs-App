@@ -15,7 +15,7 @@ fi
 APP_MODULE="src.app:app"
 HOST="0.0.0.0"
 PORT="8000"
-WORKERS=$(($(nproc) * 2 + 1))
+WORKERS=3
 
 LOG_DIR="logs"
 PID_FILE="gunicorn.pid"
@@ -76,10 +76,8 @@ nohup gunicorn $APP_MODULE \
     --log-level info \
     --access-logfile $LOG_DIR/access.log \
     --error-logfile $LOG_DIR/error.log \
+    --pid $PID_FILE \
     > /dev/null 2>&1 &
-
-# ─── SAVE PID ────────────────────────────────
-echo $! > $PID_FILE
 
 # ─── START STREAMLIT ──────────────────────────
 echo "Starting Streamlit dashboard..."
@@ -103,8 +101,14 @@ nohup streamlit run $DATA_VIEWER_APP \
 # ─── SAVE DATA VIEWER PID ─────────────────────
 echo $! > $DATA_VIEWER_PID_FILE
 
+sleep 2
+
 echo "Server started successfully!"
-echo "PID: $(cat $PID_FILE)"
+if [ -f $PID_FILE ]; then
+    echo "PID: $(cat $PID_FILE)"
+else
+    echo "PID: Gunicorn PID file not found yet"
+fi
 echo "Streamlit PID: $(cat $STREAMLIT_PID_FILE)"
 echo "Data Viewer PID: $(cat $DATA_VIEWER_PID_FILE)"
 echo "Logs: $LOG_DIR/"

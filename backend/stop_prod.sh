@@ -9,7 +9,9 @@ if [ -f $PID_FILE ]; then
     PID=$(cat $PID_FILE)
     if ps -p $PID > /dev/null 2>&1; then
         kill $PID
-        echo "Gunicorn server stopped (PID: $PID)"
+        echo "Waiting for Gunicorn server to stop (PID: $PID)..."
+        while ps -p $PID > /dev/null 2>&1; do sleep 1; done
+        echo "Gunicorn server stopped"
     else
         echo "Gunicorn process not running, removing stale PID file"
     fi
