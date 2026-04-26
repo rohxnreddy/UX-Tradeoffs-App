@@ -2,7 +2,7 @@
 import 'package:flutter/services.dart';
 
 class SpeakerControl {
-  static const _channel = MethodChannel('com.example.frontend/audio');
+  static const _channel = MethodChannel('com.bits.phonepathology/audio');
 
   static Future<void> enableSpeaker() async {
     try { await _channel.invokeMethod('setSpeakerOn'); } catch (_) {}

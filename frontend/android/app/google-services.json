@@ -7,6 +7,67 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:112324301458:android:995194a8474b185ed2cc4b",
+        "android_client_info": {
+          "package_name": "com.bits.phonepathology"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "112324301458-hc8m53mbnuv6agv4cfhfcrhcfrfrmm8t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bits.phonepathology",
+            "certificate_hash": "9541a6eccd080510a2c1a7f8736b03251025aac5"
+          }
+        },
+        {
+          "client_id": "112324301458-n9son4lgt456uloku0r5khplv11f80sg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bits.phonepathology",
+            "certificate_hash": "cba9b184420b26c80e50d1010cc9d96d01500f63"
+          }
+        },
+        {
+          "client_id": "112324301458-roduct1qm1nkdg14531t7dta4888ndm2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bits.phonepathology",
+            "certificate_hash": "65918fb19744841b4e9443a82e63a2d18bbc4ca1"
+          }
+        },
+        {
+          "client_id": "112324301458-vcopm6rg9n10uatlimf3p2r0irmrd2bk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bits.phonepathology",
+            "certificate_hash": "ab4931a5bdcd828faecb8fb68ade44e148d92027"
+          }
+        },
+        {
+          "client_id": "112324301458-rsaah1l704vr548lu6f2idb511guttto.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCWW_7pmRvuFn6j1L2lTFunlmlM4Cn61ws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "112324301458-rsaah1l704vr548lu6f2idb511guttto.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:112324301458:android:6bf07f1d48db9bf0d2cc4b",
         "android_client_info": {
           "package_name": "com.example.frontend"
@@ -19,6 +80,14 @@
           "android_info": {
             "package_name": "com.example.frontend",
             "certificate_hash": "9541a6eccd080510a2c1a7f8736b03251025aac5"
+          }
+        },
+        {
+          "client_id": "112324301458-dfltn93scuco5c6d0innn3g9hkt8okgf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.frontend",
+            "certificate_hash": "cba9b184420b26c80e50d1010cc9d96d01500f63"
           }
         },
         {

@@ -92,7 +92,7 @@ generated_plugin_registrant.dart
 .fvm/
 
 # ========================
-# Environment files
+# Environment filesç
 # ========================
 # .env (Uncommented to keep in GitHub)
 #!.env
@@ -124,3 +124,10 @@ coverage/
 # ========================
 *.tmp
 *.swp
+
+key.properties
+*.jks
+*.keystore
+
+android/local.properties
+

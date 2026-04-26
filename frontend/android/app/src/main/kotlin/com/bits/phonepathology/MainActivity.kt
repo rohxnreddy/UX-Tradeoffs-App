@@ -1,4 +1,4 @@
-package com.example.frontend
+package com.bits.phonepathology
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -7,7 +7,7 @@ import android.content.Context
 import android.media.AudioManager
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.example.frontend/audio"
+    private val CHANNEL = "com.bits.phonepathology/audio"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
