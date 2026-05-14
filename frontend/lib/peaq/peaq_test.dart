@@ -365,19 +365,19 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
   }
 
   String _getOdgDescription(double score) {
-    if (score >= -0.5) return "Imperceptible degradation";
-    if (score >= -1.0) return "Perceptible but not annoying";
-    if (score >= -2.0) return "Slightly annoying";
-    if (score >= -3.0) return "Annoying";
-    return "Very annoying degradation";
+    if (score >= -0.5) return "Excellent quality";
+    if (score >= -1.0) return "Good quality";
+    if (score >= -2.0) return "Moderate quality";
+    if (score >= -3.0) return "Fair quality";
+    return "Poor quality";
   }
 
   Color _getOdgColor(double score) {
     if (score >= -0.5) return Colors.green;
     if (score >= -1.0) return Colors.lightGreen;
-    if (score >= -2.0) return Colors.orange;
+    if (score >= -2.0) return Colors.orange.shade400;
     if (score >= -3.0) return Colors.deepOrange;
-    return Colors.red;
+    return Colors.red.shade400;
   }
 
   void _showSettingsDialog() {

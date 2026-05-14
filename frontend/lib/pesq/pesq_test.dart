@@ -287,15 +287,15 @@ class _PesqTestScreenState extends State<PesqTestScreen> {
   String _getPesqDescription(double score) {
     if (score >= 4.0) return "Excellent quality";
     if (score >= 3.0) return "Good quality";
-    if (score >= 2.0) return "Poor quality";
-    return "Very poor quality";
+    if (score >= 2.0) return "Moderate quality";
+    return "Poor quality";
   }
 
   Color _getPesqColor(double score) {
     if (score >= 4.0) return Colors.green.shade700;
-    if (score >= 3.0) return Colors.orange.shade700;
-    if (score >= 2.0) return Colors.deepOrange;
-    return Colors.red.shade700;
+    if (score >= 3.0) return Colors.lightGreen.shade700;
+    if (score >= 2.0) return Colors.orange;
+    return Colors.deepOrange;
   }
 
   void _showSettingsDialog() {
