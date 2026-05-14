@@ -84,6 +84,34 @@ class _PeaqTestScreenState extends State<PeaqTestScreen> {
   */
 
   Future<void> runPeaqTest() async {
+    bool? proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.volume_up, color: Colors.blue),
+            SizedBox(width: 8),
+            Text("Volume Check"),
+          ],
+        ),
+        content: const Text(
+          "For accurate acoustic analysis, please ensure your phone's media volume is set to maximum.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Continue"),
+          ),
+        ],
+      ),
+    );
+
+    if (proceed != true) return;
+
     setState(() {
       isProcessing = true;
       odgScore = null;
