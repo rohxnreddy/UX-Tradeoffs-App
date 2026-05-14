@@ -67,20 +67,31 @@ selected_table = st.sidebar.selectbox("Select Table", tables)
 limit = st.sidebar.number_input("Limit rows", min_value=10, max_value=10000, value=100)
 
 
-# ─── Column sets ────────────────────────────────────────────
+# ─── Column sets (derived from schema.sql) ──────────────────
 
-# sessions: show all stored metadata columns.
-# This avoids the dashboard silently hiding newly-added fields.
-sessions_cols = "*"
+# users / sessions: SELECT * — new columns appear automatically.
 users_cols = "*"
+sessions_cols = "*"
 
+# vmaf_results — all columns except storage_path (internal path, not useful in viewer)
+vmaf_cols = """
+    id, session_id, created_at,
+    filename, file_size_bytes,
+    vmaf_score,
+    status,
+    raw_output
+"""
+
+# peaq_results — all score columns; storage paths omitted (internal)
 peaq_cols = """
     id, session_id, created_at,
     degraded_filename, noise_filename, has_noise_reduction,
     raw_odg, odg_score AS wiener_odg, ffmpeg_odg,
-    odg_label, raw_output
+    odg_label,
+    raw_output
 """
 
+# pesq_results — all score columns; storage_path omitted (internal)
 pesq_cols = """
     id, session_id, created_at,
     call_type, recorded_filename,
@@ -88,30 +99,33 @@ pesq_cols = """
     raw_output
 """
 
+# iqa_results — all score + derived columns; storage_path omitted (internal)
+iqa_cols = """
+    id, session_id, created_at,
+    image_index, filename, file_size_bytes,
+    brisque, niqe, piqe,
+    camera_score,
+    raw_output
+"""
+
 # ─── Main ───────────────────────────────────────────────────
 
 st.title("Database Viewer")
 
-if selected_table == "sessions":
-    df = query(
-        f"SELECT {sessions_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
-    )
-elif selected_table == "users":
-    df = query(
-        f"SELECT {users_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
-    )
-elif selected_table == "peaq_results":
-    df = query(
-        f"SELECT {peaq_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
-    )
-elif selected_table == "pesq_results":
-    df = query(
-        f"SELECT {pesq_cols} FROM {selected_table} ORDER BY created_at DESC LIMIT {limit}"
-    )
-else:
-    df = query(
-        f"SELECT * FROM {selected_table} ORDER BY 1 DESC LIMIT {limit}"
-    )
+col_map = {
+    "users":        (users_cols,    "created_at"),
+    "sessions":     (sessions_cols, "created_at"),
+    "vmaf_results": (vmaf_cols,     "created_at"),
+    "peaq_results": (peaq_cols,     "created_at"),
+    "pesq_results": (pesq_cols,     "created_at"),
+    "iqa_results":  (iqa_cols,      "created_at"),
+}
+
+cols, order_col = col_map[selected_table]
+
+df = query(
+    f"SELECT {cols} FROM {selected_table} ORDER BY {order_col} DESC LIMIT {limit}"
+)
 
 if df.empty:
     st.warning("No data found.")
