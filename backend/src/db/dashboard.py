@@ -36,7 +36,7 @@ def query(sql):
     if conn.closed != 0:
         get_connection.clear()
         conn = get_connection()
-        
+
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql)
@@ -78,14 +78,14 @@ peaq_cols = """
     id, session_id, created_at,
     degraded_filename, noise_filename, has_noise_reduction,
     raw_odg, odg_score AS wiener_odg, ffmpeg_odg,
-    odg_label, subtracted_audio_b64, raw_output
+    odg_label, raw_output
 """
 
 pesq_cols = """
     id, session_id, created_at,
     call_type, recorded_filename,
     direct_pesq, pstn_pesq, volte_pesq, voip_pesq,
-    degraded_audio_b64, raw_output
+    raw_output
 """
 
 # ─── Main ───────────────────────────────────────────────────

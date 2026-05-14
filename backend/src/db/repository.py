@@ -374,8 +374,7 @@ async def insert_peaq_result(
 ) -> UUID:
     """
     result is whatever compute_peaq_odg() returns.
-    Expected keys: odg_score (wiener), raw_odg, ffmpeg_odg,
-                   odg_label, subtracted_audio_b64 (optional)
+    Expected keys: odg_score (wiener), raw_odg, ffmpeg_odg, odg_label
     """
     pool = await get_pool()
     has_noise = noise_filename is not None
@@ -384,10 +383,10 @@ async def insert_peaq_result(
         INSERT INTO peaq_results (
             session_id, degraded_filename, noise_filename,
             has_noise_reduction, odg_score, raw_odg, ffmpeg_odg,
-            odg_label, subtracted_audio_b64, raw_output,
+            odg_label, raw_output,
             degraded_storage_path, noise_storage_path
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb, $11, $12)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb, $10, $11)
         RETURNING id
         """,
         session_id,
@@ -398,7 +397,6 @@ async def insert_peaq_result(
         result.get("raw_odg"),
         result.get("ffmpeg_odg"),
         result.get("odg_label"),
-        result.get("subtracted_audio_b64"),
         _jsonb(result),
         result.get("degraded_storage_path"),
         result.get("noise_storage_path"),
@@ -458,9 +456,9 @@ async def insert_pesq_result_from_webrtc(
         INSERT INTO pesq_results (
             session_id, call_type, recorded_filename,
             direct_pesq, pstn_pesq, volte_pesq, voip_pesq,
-            degraded_audio_b64, raw_output, storage_path
+            raw_output, storage_path
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb, $10)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb, $9)
         RETURNING id
         """,
         session_id,
@@ -470,7 +468,6 @@ async def insert_pesq_result_from_webrtc(
         result.get("traditional_narrowband", {}).get("pesq_score"),
         result.get("volte_wideband", {}).get("pesq_score"),
         result.get("voip_wideband", {}).get("pesq_score"),
-        result.get("degraded_audio_b64"),
         _jsonb(result),
         result.get("storage_path"),
     )

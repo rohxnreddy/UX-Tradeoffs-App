@@ -182,9 +182,6 @@ CREATE TABLE IF NOT EXISTS peaq_results (
     ffmpeg_odg              NUMERIC(8,4),   -- FFmpeg afftdn denoised ODG
     odg_label               TEXT,           -- e.g. "Imperceptible", "Perceptible but not annoying"
 
-    -- Noise reduction artifact (base64 audio returned to client)
-    subtracted_audio_b64    TEXT,           -- only populated when noise supplied
-
     degraded_storage_path   TEXT,
     noise_storage_path      TEXT,
 
@@ -212,9 +209,6 @@ CREATE TABLE IF NOT EXISTS pesq_results (
 
     -- Device call extras
     recorded_filename       TEXT,
-
-    -- Degraded audio returned to client (base64)
-    degraded_audio_b64      TEXT,
 
     storage_path            TEXT,
 
@@ -248,8 +242,8 @@ CREATE TABLE IF NOT EXISTS iqa_results (
     -- Weighted geometric mean of "goodness" scores per metric.
     -- This correctly penalises catastrophic failures in any single dimension.
     camera_score        NUMERIC(10,4) GENERATED ALWAYS AS (
-        POWER(GREATEST(100.0 - brisque, 0.0), 0.20) * 
-        POWER(GREATEST(100.0 - (niqe * 100.0 / 15.0), 0.0), 0.45) * 
+        POWER(GREATEST(100.0 - brisque, 0.0), 0.20) *
+        POWER(GREATEST(100.0 - (niqe * 100.0 / 15.0), 0.0), 0.45) *
         POWER(GREATEST(100.0 - piqe, 0.0), 0.35)
     ) STORED,
 
