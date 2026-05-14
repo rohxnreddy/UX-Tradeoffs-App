@@ -65,52 +65,46 @@ tables = [
 
 selected_table = st.sidebar.selectbox("Select Table", tables)
 limit = st.sidebar.number_input("Limit rows", min_value=10, max_value=10000, value=100)
+show_raw = st.sidebar.checkbox("Show raw_output column", value=False)
 
 
 # ─── Column sets (derived from schema.sql) ──────────────────
+# raw_output is excluded by default — it can be 10s of MB per row
+# and will exceed Streamlit's 200 MB message limit quickly.
+# Enable it via the sidebar checkbox when needed.
 
-# users / sessions: SELECT * — new columns appear automatically.
-users_cols = "*"
+users_cols    = "*"
 sessions_cols = "*"
 
-# vmaf_results — all columns except storage_path (internal path, not useful in viewer)
 vmaf_cols = """
     id, session_id, created_at,
     filename, file_size_bytes,
     vmaf_score,
-    status,
-    raw_output
+    status
 """
 
-# peaq_results — all score columns; storage paths omitted (internal)
 peaq_cols = """
     id, session_id, created_at,
     degraded_filename, noise_filename, has_noise_reduction,
     raw_odg, odg_score AS wiener_odg, ffmpeg_odg,
-    odg_label,
-    raw_output
+    odg_label
 """
 
-# pesq_results — all score columns; storage_path omitted (internal)
 pesq_cols = """
     id, session_id, created_at,
     call_type, recorded_filename,
-    direct_pesq, pstn_pesq, volte_pesq, voip_pesq,
-    raw_output
+    direct_pesq, pstn_pesq, volte_pesq, voip_pesq
 """
 
-# iqa_results — all score + derived columns; storage_path omitted (internal)
 iqa_cols = """
     id, session_id, created_at,
     image_index, filename, file_size_bytes,
     brisque, niqe, piqe,
-    camera_score,
-    raw_output
+    camera_score
 """
 
-# ─── Main ───────────────────────────────────────────────────
-
-st.title("Database Viewer")
+# Append raw_output only when the user explicitly opts in
+RAW_TABLES = {"vmaf_results", "peaq_results", "pesq_results", "iqa_results"}
 
 col_map = {
     "users":        (users_cols,    "created_at"),
@@ -121,7 +115,14 @@ col_map = {
     "iqa_results":  (iqa_cols,      "created_at"),
 }
 
+# ─── Main ───────────────────────────────────────────────────
+
+st.title("Database Viewer")
+
 cols, order_col = col_map[selected_table]
+
+if show_raw and selected_table in RAW_TABLES:
+    cols = cols.rstrip() + ", raw_output"
 
 df = query(
     f"SELECT {cols} FROM {selected_table} ORDER BY {order_col} DESC LIMIT {limit}"
