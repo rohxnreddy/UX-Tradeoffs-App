@@ -55,7 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const icon = refreshBtn.querySelector('i');
             if (icon) icon.classList.add('bx-spin');
 
-            const response = await fetch('/api/insights');
+            const apiPath = window.location.pathname.replace(/\/insights\/dashboard\.html$/, '/api/insights');
+            const response = await fetch(apiPath);
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
 
