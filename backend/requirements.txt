@@ -17,3 +17,4 @@ streamlit
 psycopg2-binary
 gunicorn
 Pillow
+plotly

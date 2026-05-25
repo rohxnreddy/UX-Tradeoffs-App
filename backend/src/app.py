@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile, Header, Query
 from fastapi.responses import FileResponse, Response
 from fastapi.concurrency import run_in_threadpool
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -17,7 +18,7 @@ from src.webrtc.codec_call import make_webrtc_call, make_device_webrtc_call
 from src.IMA.IMA import compute_iqa
 from src.db.schemas import DeviceMeta
 
-from src.db.database import init_pool, close_pool
+from src.db.database import init_pool, close_pool, get_pool_direct
 from src.db import repository as db
 
 from dotenv import load_dotenv
@@ -76,6 +77,170 @@ def init():
     return {"message": "Server is Up!"}
 
 
+@app.get("/api/insights")
+async def get_insights():
+    pool = await get_pool_direct()
+    async with pool.acquire() as conn:
+        # 1. High level metrics
+        total_users = await conn.fetchval("SELECT COUNT(*) FROM users")
+        total_sessions = await conn.fetchval("SELECT COUNT(*) FROM sessions")
+        
+        # 2. Test counts
+        vmaf_count = await conn.fetchval("SELECT COUNT(*) FROM vmaf_results WHERE status = 'completed'")
+        peaq_count = await conn.fetchval("SELECT COUNT(*) FROM peaq_results")
+        pesq_count = await conn.fetchval("SELECT COUNT(*) FROM pesq_results")
+        iqa_count = await conn.fetchval("SELECT COUNT(*) FROM iqa_results")
+        
+        # 3. Average scores
+        vmaf_avg = await conn.fetchval("SELECT AVG(vmaf_score) FROM vmaf_results WHERE status = 'completed'")
+        
+        peaq_row = await conn.fetchrow("""
+            SELECT 
+                AVG(odg_score) as avg_odg, 
+                AVG(raw_odg) as avg_raw_odg, 
+                AVG(ffmpeg_odg) as avg_ffmpeg_odg 
+            FROM peaq_results
+        """)
+        
+        pesq_row = await conn.fetchrow("""
+            SELECT 
+                AVG(direct_pesq) as avg_direct, 
+                AVG(pstn_pesq) as avg_pstn, 
+                AVG(volte_pesq) as avg_volte, 
+                AVG(voip_pesq) as avg_voip 
+            FROM pesq_results
+        """)
+        
+        iqa_row = await conn.fetchrow("""
+            SELECT 
+                AVG(camera_score) as avg_camera, 
+                AVG(brisque) as avg_brisque, 
+                AVG(niqe) as avg_niqe, 
+                AVG(piqe) as avg_piqe 
+            FROM iqa_results
+        """)
+        
+        # 4. Device distributions
+        device_brands = await conn.fetch("""
+            SELECT COALESCE(device_brand, 'Unknown') as brand, COUNT(*) as count 
+            FROM sessions 
+            GROUP BY device_brand 
+            ORDER BY count DESC 
+            LIMIT 5
+        """)
+        
+        # 5. Connection distributions
+        connection_types = await conn.fetch("""
+            SELECT COALESCE(connection_type, 'Unknown') as type, COUNT(*) as count 
+            FROM sessions 
+            GROUP BY connection_type 
+            ORDER BY count DESC
+        """)
+        
+        # 6. Screen refresh rate distribution
+        refresh_rates = await conn.fetch("""
+            SELECT display_refresh_rate as rate, COUNT(*) as count 
+            FROM sessions 
+            WHERE display_refresh_rate IS NOT NULL 
+            GROUP BY display_refresh_rate 
+            ORDER BY rate
+        """)
+
+        # 7. Recent sessions list
+        recent_sessions = await conn.fetch("""
+            SELECT s.id, s.created_at, COALESCE(u.username, 'Anonymous') as username, 
+                   COALESCE(s.device_model, 'Unknown') as device_model, 
+                   COALESCE(s.country, 'Unknown') as country 
+            FROM sessions s 
+            LEFT JOIN users u ON s.user_id = u.id 
+            ORDER BY s.created_at DESC 
+            LIMIT 5
+        """)
+
+        # 8. Time series of tests (for trend chart)
+        recent_tests = await conn.fetch("""
+            (SELECT 'VMAF' as test_type, created_at, vmaf_score::float as score FROM vmaf_results WHERE status = 'completed' ORDER BY created_at DESC LIMIT 10)
+            UNION ALL
+            (SELECT 'PEAQ' as test_type, created_at, odg_score::float as score FROM peaq_results ORDER BY created_at DESC LIMIT 10)
+            UNION ALL
+            (SELECT 'PESQ' as test_type, created_at, direct_pesq::float as score FROM pesq_results ORDER BY created_at DESC LIMIT 10)
+            UNION ALL
+            (SELECT 'IQA' as test_type, created_at, camera_score::float as score FROM iqa_results ORDER BY created_at DESC LIMIT 10)
+            ORDER BY created_at DESC
+            LIMIT 30
+        """)
+
+        # 9. All individual scores for distribution
+        all_vmaf = await conn.fetch("SELECT vmaf_score::float as score FROM vmaf_results WHERE status = 'completed'")
+        all_peaq = await conn.fetch("SELECT odg_score::float as score FROM peaq_results WHERE odg_score IS NOT NULL")
+        all_pesq = await conn.fetch("SELECT direct_pesq::float as score FROM pesq_results WHERE direct_pesq IS NOT NULL")
+        all_iqa = await conn.fetch("SELECT camera_score::float as score FROM iqa_results WHERE camera_score IS NOT NULL")
+
+    return {
+        "metrics": {
+            "total_users": total_users,
+            "total_sessions": total_sessions,
+            "total_tests": (vmaf_count or 0) + (peaq_count or 0) + (pesq_count or 0) + (iqa_count or 0),
+            "test_counts": {
+                "vmaf": vmaf_count or 0,
+                "peaq": peaq_count or 0,
+                "pesq": pesq_count or 0,
+                "iqa": iqa_count or 0
+            }
+        },
+        "averages": {
+            "vmaf": float(vmaf_avg) if vmaf_avg is not None else None,
+            "peaq": {
+                "odg_score": float(peaq_row["avg_odg"]) if peaq_row and peaq_row["avg_odg"] is not None else None,
+                "raw_odg": float(peaq_row["avg_raw_odg"]) if peaq_row and peaq_row["avg_raw_odg"] is not None else None,
+                "ffmpeg_odg": float(peaq_row["avg_ffmpeg_odg"]) if peaq_row and peaq_row["avg_ffmpeg_odg"] is not None else None,
+            } if peaq_row else None,
+            "pesq": {
+                "direct_pesq": float(pesq_row["avg_direct"]) if pesq_row and pesq_row["avg_direct"] is not None else None,
+                "pstn_pesq": float(pesq_row["avg_pstn"]) if pesq_row and pesq_row["avg_pstn"] is not None else None,
+                "volte_pesq": float(pesq_row["avg_volte"]) if pesq_row and pesq_row["avg_volte"] is not None else None,
+                "voip_pesq": float(pesq_row["avg_voip"]) if pesq_row and pesq_row["avg_voip"] is not None else None,
+            } if pesq_row else None,
+            "iqa": {
+                "camera_score": float(iqa_row["avg_camera"]) if iqa_row and iqa_row["avg_camera"] is not None else None,
+                "brisque": float(iqa_row["avg_brisque"]) if iqa_row and iqa_row["avg_brisque"] is not None else None,
+                "niqe": float(iqa_row["avg_niqe"]) if iqa_row and iqa_row["avg_niqe"] is not None else None,
+                "piqe": float(iqa_row["avg_piqe"]) if iqa_row and iqa_row["avg_piqe"] is not None else None,
+            } if iqa_row else None,
+        },
+        "distributions": {
+            "device_brands": [dict(r) for r in device_brands],
+            "connection_types": [dict(r) for r in connection_types],
+            "refresh_rates": [{"rate": float(r["rate"]), "count": r["count"]} for r in refresh_rates]
+        },
+        "recent_sessions": [
+            {
+                "id": str(r["id"]),
+                "created_at": r["created_at"].isoformat(),
+                "username": r["username"],
+                "device_model": r["device_model"],
+                "country": r["country"]
+            } for r in recent_sessions
+        ],
+        "recent_tests": [
+            {
+                "test_type": r["test_type"],
+                "created_at": r["created_at"].isoformat(),
+                "score": float(r["score"]) if r["score"] is not None else None
+            } for r in recent_tests
+        ],
+        "vmaf_all_scores": [r["score"] for r in all_vmaf],
+        "peaq_all_scores": [r["score"] for r in all_peaq],
+        "pesq_all_scores": [r["score"] for r in all_pesq],
+        "iqa_all_scores": [r["score"] for r in all_iqa]
+    }
+
+
+# Serve the glass UI dashboard statically
+INSIGHTS_DIR = Path(__file__).resolve().parent / "db" / "insights"
+app.mount("/insights", StaticFiles(directory=str(INSIGHTS_DIR), html=True), name="insights")
+
+
 # ─── Device Metadata ─────────────────────────────────────────────────────────
 #
 # Called once per app launch (after login + questionnaire).
@@ -122,7 +287,7 @@ async def receive_metadata(meta: DeviceMeta):
 
 @app.get("/session/{session_id}")
 async def get_session(session_id: UUID):
-    pool = await db.get_pool_direct()
+    pool = await get_pool_direct()
     row = await pool.fetchrow(
         """
         SELECT

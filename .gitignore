@@ -50,5 +50,6 @@ test.jpg
 # Data storage
 data/
 
+seed_db.py
 
 

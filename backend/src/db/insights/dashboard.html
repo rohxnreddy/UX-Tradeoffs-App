@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Pathology - Insights Dashboard</title>
+    <!-- Google Fonts: Inter & Space Grotesk -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Boxicons for Premium Icons -->
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+    <!-- Plotly.js CDN -->
+    <script src="https://cdn.plot.ly/plotly-2.29.1.min.js" charset="utf-8"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Animated background shapes for Glassmorphism depth -->
+    <div class="bg-blob blob-1"></div>
+    <div class="bg-blob blob-2"></div>
+    <div class="bg-blob blob-3"></div>
+
+    <div class="dashboard-wrapper">
+        <!-- Top Navbar -->
+        <header class="glass-panel top-navbar">
+            <div class="nav-left">
+                <div class="header-logo-brand">
+                    <img src="icon.png" alt="Phone Pathology" class="logo-img">
+                    <div class="logo-text">
+                        <h2>Phone Pathology</h2>
+                        <span class="subtitle">Insights Dashboard</span>
+                    </div>
+                </div>
+            </div>
+            <div class="nav-right">
+                <div class="status-indicator">
+                    <span class="pulse-dot"></span>
+                    <span>System Active</span>
+                </div>
+                <button id="refresh-btn" class="glass-btn primary">
+                    <i class="bx bx-refresh"></i>
+                    <span>Refresh Data</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Metrics Grid (Total Users, Total Sessions, Tests Ran) -->
+        <section class="metrics-grid">
+            <div class="glass-panel metric-card">
+                <div class="card-icon-wrapper user-icon">
+                    <i class="bx bxs-user-account"></i>
+                </div>
+                <div class="card-data">
+                    <span class="card-label">Total Users</span>
+                    <h3 id="metric-users">-</h3>
+                </div>
+            </div>
+
+            <div class="glass-panel metric-card">
+                <div class="card-icon-wrapper session-icon">
+                    <i class="bx bx-devices"></i>
+                </div>
+                <div class="card-data">
+                    <span class="card-label">Total Sessions</span>
+                    <h3 id="metric-sessions">-</h3>
+                </div>
+            </div>
+
+            <div class="glass-panel metric-card">
+                <div class="card-icon-wrapper test-icon">
+                    <i class="bx bx-check-shield"></i>
+                </div>
+                <div class="card-data">
+                    <span class="card-label">Tests Ran</span>
+                    <h3 id="metric-tests">-</h3>
+                </div>
+            </div>
+        </section>
+
+        <!-- List Counts of all tests & Assessment Types Graph -->
+        <section class="charts-row split-main">
+            <!-- Left Side: List Counts of all tests -->
+            <div class="glass-panel chart-container test-counts-list-panel">
+                <div class="chart-header">
+                    <h3><i class="bx bx-list-check"></i> Tests Breakdown</h3>
+                </div>
+                <div class="test-counts-list">
+                    <div class="test-count-item vmaf-bg-border">
+                        <div class="item-left">
+                            <i class="bx bx-video item-icon vmaf-color"></i>
+                            <span class="item-name">VMAF Video Quality tests</span>
+                        </div>
+                        <span class="item-value" id="count-vmaf">-</span>
+                    </div>
+                    <div class="test-count-item peaq-bg-border">
+                        <div class="item-left">
+                            <i class="bx bx-volume-full item-icon peaq-color"></i>
+                            <span class="item-name">PEAQ Audio tests</span>
+                        </div>
+                        <span class="item-value" id="count-peaq">-</span>
+                    </div>
+                    <div class="test-count-item pesq-bg-border">
+                        <div class="item-left">
+                            <i class="bx bx-microphone item-icon pesq-color"></i>
+                            <span class="item-name">PESQ Voice tests</span>
+                        </div>
+                        <span class="item-value" id="count-pesq">-</span>
+                    </div>
+                    <div class="test-count-item iqa-bg-border">
+                        <div class="item-left">
+                            <i class="bx bx-camera item-icon iqa-color"></i>
+                            <span class="item-name">IQA Camera Quality tests</span>
+                        </div>
+                        <span class="item-value" id="count-iqa">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Assessment Types Donut -->
+            <div class="glass-panel chart-container">
+                <div class="chart-header">
+                    <h3><i class="bx bx-pie-chart-alt-2"></i> Assessment Types Share</h3>
+                </div>
+                <div id="chart-test-pie" class="plotly-chart"></div>
+            </div>
+        </section>
+
+        <!-- 4 boxes of Averages -->
+        <section class="averages-grid">
+            <div class="glass-panel average-card">
+                <div class="card-icon-wrapper vmaf-icon">
+                    <i class="bx bx-video"></i>
+                </div>
+                <div class="card-data">
+                    <span class="card-label">Avg VMAF Score</span>
+                    <h3 id="avg-vmaf">-</h3>
+                </div>
+            </div>
+
+            <div class="glass-panel average-card">
+                <div class="card-icon-wrapper pesq-icon">
+                    <i class="bx bx-microphone"></i>
+                </div>
+                <div class="card-data">
+                    <span class="card-label">Avg PESQ MOS</span>
+                    <h3 id="avg-pesq">-</h3>
+                </div>
+            </div>
+
+            <div class="glass-panel average-card">
+                <div class="card-icon-wrapper peaq-icon">
+                    <i class="bx bx-volume-full"></i>
+                </div>
+                <div class="card-data">
+                    <span class="card-label">Avg PEAQ ODG</span>
+                    <h3 id="avg-peaq">-</h3>
+                </div>
+            </div>
+
+            <div class="glass-panel average-card">
+                <div class="card-icon-wrapper iqa-icon">
+                    <i class="bx bx-camera"></i>
+                </div>
+                <div class="card-data">
+                    <span class="card-label">Avg IQA Camera</span>
+                    <h3 id="avg-iqa">-</h3>
+                </div>
+            </div>
+        </section>
+
+        <!-- Grid of Individual Charts (each representing an assessment category) -->
+        <section class="charts-grid-2x2">
+            <!-- 1. Video Graph -->
+            <div class="glass-panel chart-container">
+                <div class="chart-header">
+                    <h3><i class="bx bx-video"></i> Video Experience (VMAF) Score Distribution</h3>
+                </div>
+                <div id="chart-vmaf-dist" class="plotly-chart"></div>
+            </div>
+
+            <!-- 2. Voice PESQ Graph -->
+            <div class="glass-panel chart-container">
+                <div class="chart-header">
+                    <h3><i class="bx bx-microphone"></i> Voice Clarity (PESQ) Score Distribution</h3>
+                </div>
+                <div id="chart-pesq-dist" class="plotly-chart"></div>
+            </div>
+
+            <!-- 3. Audio PEAQ Graph -->
+            <div class="glass-panel chart-container">
+                <div class="chart-header">
+                    <h3><i class="bx bx-volume-full"></i> Audio Quality (PEAQ) Score Distribution</h3>
+                </div>
+                <div id="chart-peaq-dist" class="plotly-chart"></div>
+            </div>
+
+            <!-- 4. Camera IQA Graph -->
+            <div class="glass-panel chart-container">
+                <div class="chart-header">
+                    <h3><i class="bx bx-camera"></i> Camera Quality (IQA) Score Distribution</h3>
+                </div>
+                <div id="chart-iqa-dist" class="plotly-chart"></div>
+            </div>
+        </section>
+
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
