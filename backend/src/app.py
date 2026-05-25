@@ -86,13 +86,13 @@ async def get_insights():
         total_sessions = await conn.fetchval("SELECT COUNT(*) FROM sessions")
         
         # 2. Test counts
-        vmaf_count = await conn.fetchval("SELECT COUNT(*) FROM vmaf_results WHERE status = 'completed'")
+        vmaf_count = await conn.fetchval("SELECT COUNT(*) FROM vmaf_results")
         peaq_count = await conn.fetchval("SELECT COUNT(*) FROM peaq_results")
         pesq_count = await conn.fetchval("SELECT COUNT(*) FROM pesq_results")
         iqa_count = await conn.fetchval("SELECT COUNT(*) FROM iqa_results")
         
         # 3. Average scores
-        vmaf_avg = await conn.fetchval("SELECT AVG(vmaf_score) FROM vmaf_results WHERE status = 'completed'")
+        vmaf_avg = await conn.fetchval("SELECT AVG(vmaf_score) FROM vmaf_results")
         
         peaq_row = await conn.fetchrow("""
             SELECT 
@@ -159,7 +159,7 @@ async def get_insights():
 
         # 8. Time series of tests (for trend chart)
         recent_tests = await conn.fetch("""
-            (SELECT 'VMAF' as test_type, created_at, vmaf_score::float as score FROM vmaf_results WHERE status = 'completed' ORDER BY created_at DESC LIMIT 10)
+            (SELECT 'VMAF' as test_type, created_at, vmaf_score::float as score FROM vmaf_results WHERE vmaf_score IS NOT NULL ORDER BY created_at DESC LIMIT 10)
             UNION ALL
             (SELECT 'PEAQ' as test_type, created_at, odg_score::float as score FROM peaq_results ORDER BY created_at DESC LIMIT 10)
             UNION ALL
@@ -171,7 +171,7 @@ async def get_insights():
         """)
 
         # 9. All individual scores for distribution
-        all_vmaf = await conn.fetch("SELECT vmaf_score::float as score FROM vmaf_results WHERE status = 'completed'")
+        all_vmaf = await conn.fetch("SELECT vmaf_score::float as score FROM vmaf_results WHERE vmaf_score IS NOT NULL")
         all_peaq = await conn.fetch("SELECT odg_score::float as score FROM peaq_results WHERE odg_score IS NOT NULL")
         all_pesq = await conn.fetch("SELECT direct_pesq::float as score FROM pesq_results WHERE direct_pesq IS NOT NULL")
         all_iqa = await conn.fetch("SELECT camera_score::float as score FROM iqa_results WHERE camera_score IS NOT NULL")
