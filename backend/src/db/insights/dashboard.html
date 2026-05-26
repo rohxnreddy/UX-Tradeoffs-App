@@ -12,7 +12,7 @@
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <!-- Plotly.js CDN -->
     <script src="https://cdn.plot.ly/plotly-2.29.1.min.js" charset="utf-8"></script>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=1.4">
 </head>
 <body>
     <!-- Animated background shapes for Glassmorphism depth -->
@@ -77,6 +77,54 @@
             </div>
         </section>
 
+        <!-- Device & Demographics Grid (User's Phone Brands, Android Version, Age of Phone's, Users Location's) -->
+        <section class="charts-grid-2x2">
+            <!-- 1. Phones by Brand -->
+            <div class="glass-panel chart-container">
+                <div class="chart-header">
+                    <h3><i class="bx bx-mobile-alt"></i> User's Phone Brands</h3>
+                </div>
+                <div id="chart-brands" class="plotly-chart"></div>
+            </div>
+
+            <!-- 2. Android Version -->
+            <div class="glass-panel chart-container">
+                <div class="chart-header">
+                    <h3><i class="bx bxl-android"></i> Android Version</h3>
+                </div>
+                <div id="chart-android" class="plotly-chart"></div>
+            </div>
+
+            <!-- 3. Age of Phone's -->
+            <div class="glass-panel chart-container">
+                <div class="chart-header">
+                    <h3><i class="bx bx-history"></i> Age of Phone's</h3>
+                </div>
+                <div id="chart-phone-age" class="plotly-chart"></div>
+            </div>
+
+            <!-- 4. Location Data (3D Globe & Top Localities List) -->
+            <div class="glass-panel chart-container locations-split-panel">
+                <div class="chart-header">
+                    <h3><i class="bx bx-globe"></i> Users Location's</h3>
+                </div>
+                <div class="locations-content-wrapper">
+                    <!-- Left: Globe Chart -->
+                    <div id="chart-location" class="plotly-chart location-globe-half"></div>
+                    <!-- Right: Locality Counts Sorted Descending -->
+                    <div class="location-list-half">
+                        <div class="location-list-header">
+                            <span>Top Localities</span>
+                            <span>Sessions</span>
+                        </div>
+                        <div id="location-list" class="location-list">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- List Counts of all tests & Assessment Types Graph -->
         <section class="charts-row split-main">
             <!-- Left Side: List Counts of all tests -->
@@ -119,7 +167,7 @@
             <!-- Right Side: Assessment Types Donut -->
             <div class="glass-panel chart-container">
                 <div class="chart-header">
-                    <h3><i class="bx bx-pie-chart-alt-2"></i> Assessment Types Share</h3>
+                    <h3><i class="bx bx-pie-chart-alt-2"></i> Test Types Share</h3>
                 </div>
                 <div id="chart-test-pie" class="plotly-chart"></div>
             </div>
@@ -174,6 +222,7 @@
             <div class="glass-panel chart-container">
                 <div class="chart-header">
                     <h3><i class="bx bx-video"></i> Video Experience (VMAF) Score Distribution</h3>
+                    <span class="chart-interpretation">VMAF ranges from 0 to 100 (100 is excellent, 0 is bad).</span>
                 </div>
                 <div id="chart-vmaf-dist" class="plotly-chart"></div>
             </div>
@@ -182,6 +231,7 @@
             <div class="glass-panel chart-container">
                 <div class="chart-header">
                     <h3><i class="bx bx-microphone"></i> Voice Clarity (PESQ) Score Distribution</h3>
+                    <span class="chart-interpretation">PESQ MOS ranges from 1.0 to 4.5 (4.5 represents excellent voice clarity, 1.0 is bad).</span>
                 </div>
                 <div id="chart-pesq-dist" class="plotly-chart"></div>
             </div>
@@ -190,6 +240,7 @@
             <div class="glass-panel chart-container">
                 <div class="chart-header">
                     <h3><i class="bx bx-volume-full"></i> Audio Quality (PEAQ) Score Distribution</h3>
+                    <span class="chart-interpretation">PEAQ ODG ranges from -4.0 to 0.0 (0.0 represents imperceptible difference/excellent, -4.0 is bad).</span>
                 </div>
                 <div id="chart-peaq-dist" class="plotly-chart"></div>
             </div>
@@ -198,6 +249,7 @@
             <div class="glass-panel chart-container">
                 <div class="chart-header">
                     <h3><i class="bx bx-camera"></i> Camera Quality (IQA) Score Distribution</h3>
+                    <span class="chart-interpretation">IQA score ranges from 0 to 100 (100 represents excellent quality, 0 is bad).</span>
                 </div>
                 <div id="chart-iqa-dist" class="plotly-chart"></div>
             </div>

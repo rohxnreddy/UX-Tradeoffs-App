@@ -96,6 +96,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderCharts(data) {
         renderTestPie(data.metrics.test_counts);
         
+        // Render device and demographic charts
+        renderDeviceBrands(data.distributions.device_brands);
+        renderAndroidVersions(data.distributions.android_versions);
+        renderPhoneAges(data.distributions.phone_ages);
+        renderLocationGlobe(data.distributions.location_coordinates);
+
         // 1. VMAF Histogram
         renderHistogram(
             'chart-vmaf-dist',
@@ -127,6 +133,215 @@ document.addEventListener('DOMContentLoaded', () => {
             colors.pink,
             'IQA Score (Camera)'
         );
+    }
+
+    // Render horizontal bar chart for Device Brands
+    function renderDeviceBrands(brandsData) {
+        const divId = 'chart-brands';
+        if (!brandsData || brandsData.length === 0) {
+            document.getElementById(divId).innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; min-height: 250px; color: var(--text-secondary);">
+                    <span>No brand data available</span>
+                </div>`;
+            return;
+        }
+        
+        const brands = brandsData.map(d => d.brand).reverse();
+        const counts = brandsData.map(d => d.count).reverse();
+        
+        const trace = {
+            x: counts,
+            y: brands,
+            type: 'bar',
+            orientation: 'h',
+            marker: {
+                color: colors.blue,
+                opacity: 0.85,
+                line: { 
+                    color: colors.blue,
+                    width: 1 
+                }
+            },
+            hoverinfo: 'x'
+        };
+        
+        const layout = {
+            ...chartLayoutTemplate,
+            margin: { t: 15, r: 15, b: 35, l: 80 },
+            xaxis: {
+                ...chartLayoutTemplate.xaxis,
+                title: { text: 'Sessions Count', font: { size: 9 } },
+                tickformat: ',d'
+            },
+            yaxis: {
+                ...chartLayoutTemplate.yaxis,
+                tickfont: { size: 10 }
+            }
+        };
+        
+        Plotly.newPlot(divId, [trace], layout, { responsive: true, displayModeBar: false });
+    }
+
+    // Render vertical bar chart for Android Versions
+    function renderAndroidVersions(androidData) {
+        const divId = 'chart-android';
+        if (!androidData || androidData.length === 0) {
+            document.getElementById(divId).innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; min-height: 250px; color: var(--text-secondary);">
+                    <span>No Android version data available</span>
+                </div>`;
+            return;
+        }
+        
+        const versions = androidData.map(d => 'Android ' + d.version);
+        const counts = androidData.map(d => d.count);
+        
+        const trace = {
+            x: versions,
+            y: counts,
+            type: 'bar',
+            marker: {
+                color: colors.purple,
+                opacity: 0.8,
+                line: { color: colors.purple, width: 1 }
+            },
+            hoverinfo: 'y'
+        };
+        
+        const layout = {
+            ...chartLayoutTemplate,
+            margin: { t: 15, r: 15, b: 35, l: 45 },
+            xaxis: {
+                ...chartLayoutTemplate.xaxis,
+                tickfont: { size: 9 }
+            },
+            yaxis: {
+                ...chartLayoutTemplate.yaxis,
+                title: { text: 'Sessions Count', font: { size: 9 } },
+                tickformat: ',d'
+            }
+        };
+        
+        Plotly.newPlot(divId, [trace], layout, { responsive: true, displayModeBar: false });
+    }
+
+    // Render donut chart for Age of Phone
+    function renderPhoneAges(agesData) {
+        const divId = 'chart-phone-age';
+        if (!agesData || agesData.length === 0) {
+            document.getElementById(divId).innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; min-height: 250px; color: var(--text-secondary);">
+                    <span>No survey data available</span>
+                </div>`;
+            return;
+        }
+        
+        const labels = agesData.map(d => d.age);
+        const values = agesData.map(d => d.count);
+        
+        const trace = {
+            values: values,
+            labels: labels,
+            type: 'pie',
+            hole: 0.55,
+            marker: {
+                colors: [colors.amber, colors.emerald, colors.blue, colors.pink, colors.purple]
+            },
+            textinfo: 'percent',
+            hoverinfo: 'label+value',
+            insidetextorientation: 'radial'
+        };
+        
+        const layout = {
+            ...chartLayoutTemplate,
+            margin: { t: 15, r: 15, b: 15, l: 15 },
+            showlegend: true,
+            legend: {
+                orientation: 'h',
+                x: 0,
+                y: -0.1,
+                font: { size: 9 }
+            }
+        };
+        
+        Plotly.newPlot(divId, [trace], layout, { responsive: true, displayModeBar: false });
+    }
+
+    // Render 3D Globe & Top Localities list
+    function renderLocationGlobe(coordsData) {
+        const divId = 'chart-location';
+        if (!coordsData || coordsData.length === 0) {
+            document.getElementById(divId).innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; min-height: 250px; color: var(--text-secondary);">
+                    <span>No location data available</span>
+                </div>`;
+            return;
+        }
+
+        // Render Globe
+        const lats = coordsData.map(d => d.lat);
+        const lons = coordsData.map(d => d.lon);
+        const hoverText = coordsData.map(d => `${d.city}, ${d.country}<br>Sessions: ${d.count}`);
+        const sizes = coordsData.map(d => Math.max(10, Math.min(30, d.count * 8)));
+
+        const trace = {
+            type: 'scattergeo',
+            mode: 'markers',
+            lat: lats,
+            lon: lons,
+            hoverinfo: 'text',
+            text: hoverText,
+            marker: {
+                size: sizes,
+                color: colors.pink,
+                opacity: 0.8,
+                line: {
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    width: 1
+                }
+            }
+        };
+
+        const layout = {
+            ...chartLayoutTemplate,
+            margin: { t: 0, r: 0, b: 0, l: 0 },
+            geo: {
+                projection: {
+                    type: 'orthographic'
+                },
+                showland: true,
+                landcolor: 'rgba(255, 255, 255, 0.08)',
+                showocean: true,
+                oceancolor: 'rgba(9, 13, 22, 0.6)',
+                showlakes: false,
+                showrivers: false,
+                showcountries: true,
+                countrycolor: 'rgba(255, 255, 255, 0.15)',
+                bgcolor: 'rgba(0,0,0,0)',
+                lonaxis: {
+                    showgrid: true,
+                    gridcolor: 'rgba(255, 255, 255, 0.05)'
+                },
+                lataxis: {
+                    showgrid: true,
+                    gridcolor: 'rgba(255, 255, 255, 0.05)'
+                }
+            }
+        };
+
+        Plotly.newPlot(divId, [trace], layout, { responsive: true, displayModeBar: false });
+
+        // Populate Sorted Localities list on the right
+        const sortedLocalities = [...coordsData].sort((a, b) => b.count - a.count);
+        const listEl = document.getElementById('location-list');
+        if (listEl) {
+            listEl.innerHTML = sortedLocalities.map(d => `
+                <div class="location-list-item">
+                    <span class="location-item-name">${d.city}, ${d.country}</span>
+                    <span class="location-item-value">${d.count}</span>
+                </div>
+            `).join('');
+        }
     }
 
     // Render numerical histogram for scores

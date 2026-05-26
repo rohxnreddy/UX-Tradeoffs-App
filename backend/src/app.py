@@ -126,7 +126,7 @@ async def get_insights():
             FROM sessions 
             GROUP BY device_brand 
             ORDER BY count DESC 
-            LIMIT 5
+            LIMIT 15
         """)
         
         # 5. Connection distributions
@@ -144,6 +144,42 @@ async def get_insights():
             WHERE display_refresh_rate IS NOT NULL 
             GROUP BY display_refresh_rate 
             ORDER BY rate
+        """)
+
+        # 6a. Android versions
+        android_versions = await conn.fetch("""
+            SELECT COALESCE(android_version, 'Unknown') as version, COUNT(*) as count 
+            FROM sessions 
+            GROUP BY android_version 
+            ORDER BY count DESC
+        """)
+
+        # 6b. Age of phone (from survey)
+        phone_ages = await conn.fetch("""
+            SELECT COALESCE(phone_duration, 'Unknown') as age, COUNT(*) as count 
+            FROM users 
+            GROUP BY phone_duration 
+            ORDER BY count DESC
+        """)
+
+        # 6c. Location data (coordinates for globe and countries summary)
+        location_countries = await conn.fetch("""
+            SELECT COALESCE(country, 'Unknown') as country, COUNT(*) as count 
+            FROM sessions 
+            GROUP BY country 
+            ORDER BY count DESC
+        """)
+
+        location_coordinates = await conn.fetch("""
+            SELECT 
+                COALESCE(locality, 'Unknown') as city,
+                COALESCE(country, 'Unknown') as country,
+                latitude::float as lat,
+                longitude::float as lon,
+                COUNT(*)::int as count
+            FROM sessions
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+            GROUP BY locality, country, latitude, longitude
         """)
 
         # 7. Recent sessions list
@@ -211,7 +247,11 @@ async def get_insights():
         "distributions": {
             "device_brands": [dict(r) for r in device_brands],
             "connection_types": [dict(r) for r in connection_types],
-            "refresh_rates": [{"rate": float(r["rate"]), "count": r["count"]} for r in refresh_rates]
+            "refresh_rates": [{"rate": float(r["rate"]), "count": r["count"]} for r in refresh_rates],
+            "android_versions": [dict(r) for r in android_versions],
+            "phone_ages": [dict(r) for r in phone_ages],
+            "location_countries": [dict(r) for r in location_countries],
+            "location_coordinates": [dict(r) for r in location_coordinates]
         },
         "recent_sessions": [
             {
