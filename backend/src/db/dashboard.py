@@ -24,6 +24,46 @@ if "DATABASE_URL" not in os.environ and _dotenv_path.exists():
 
 st.set_page_config(page_title="DB Viewer", layout="wide")
 
+# Simple login protection
+def check_password():
+    """Returns True if the user had the correct username and password."""
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        import hashlib
+        pwd_hash = hashlib.sha256(st.session_state["password"].encode()).hexdigest()
+        if (
+            st.session_state["username"] == "admin"
+            and pwd_hash == "870e727c5e5f5052ab10927cb477dfbf43a247d3e805ddb803479acc3ca3c310"
+        ):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+            del st.session_state["username"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        cols = st.columns([1, 2, 1])
+        with cols[1]:
+            st.subheader("Database Viewer Login")
+            st.text_input("Username", key="username")
+            st.text_input("Password", type="password", key="password")
+            st.button("Log In", on_click=password_entered)
+        return False
+    elif not st.session_state["password_correct"]:
+        cols = st.columns([1, 2, 1])
+        with cols[1]:
+            st.subheader("Database Viewer Login")
+            st.text_input("Username", key="username")
+            st.text_input("Password", type="password", key="password")
+            st.button("Log In", on_click=password_entered)
+            st.error(" User not known or password incorrect")
+        return False
+    else:
+        return True
+
+if not check_password():
+    st.stop()
+
 # ─── DB ─────────────────────────────────────────────────────
 
 @st.cache_resource

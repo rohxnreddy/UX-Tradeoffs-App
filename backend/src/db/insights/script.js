@@ -278,11 +278,37 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Group/aggregate location data by city and country
+        const groupedMap = {};
+        coordsData.forEach(d => {
+            const city = d.city || 'Unknown';
+            const country = d.country || 'Unknown';
+            const key = `${city}, ${country}`;
+            if (!groupedMap[key]) {
+                groupedMap[key] = {
+                    city: city,
+                    country: country,
+                    lat: d.lat || 0,
+                    lon: d.lon || 0,
+                    count: 0,
+                    maxSubCount: -1
+                };
+            }
+            groupedMap[key].count += d.count;
+            if (d.count > groupedMap[key].maxSubCount) {
+                groupedMap[key].maxSubCount = d.count;
+                groupedMap[key].lat = d.lat || 0;
+                groupedMap[key].lon = d.lon || 0;
+            }
+        });
+
+        const mergedLocalities = Object.values(groupedMap);
+
         // Render Globe
-        const lats = coordsData.map(d => d.lat);
-        const lons = coordsData.map(d => d.lon);
-        const hoverText = coordsData.map(d => `${d.city}, ${d.country}<br>Sessions: ${d.count}`);
-        const sizes = coordsData.map(d => Math.max(10, Math.min(30, d.count * 8)));
+        const lats = mergedLocalities.map(d => d.lat);
+        const lons = mergedLocalities.map(d => d.lon);
+        const hoverText = mergedLocalities.map(d => `${d.city}, ${d.country}<br>Sessions: ${d.count}`);
+        const sizes = mergedLocalities.map(d => Math.max(10, Math.min(35, 8 + Math.log2(d.count) * 4)));
 
         const trace = {
             type: 'scattergeo',
@@ -302,12 +328,45 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        // Find center coordinates based on maximum frequency area
+        let centerLon = 0;
+        let centerLat = 0;
+        if (mergedLocalities.length > 0) {
+            let maxLoc = null;
+            // Try to find a valid non-Unknown city
+            mergedLocalities.forEach(loc => {
+                if (loc.city !== 'Unknown' && loc.lat !== 0 && loc.lon !== 0) {
+                    if (!maxLoc || loc.count > maxLoc.count) {
+                        maxLoc = loc;
+                    }
+                }
+            });
+            // Fallback
+            if (!maxLoc) {
+                maxLoc = mergedLocalities[0];
+                mergedLocalities.forEach(loc => {
+                    if (!maxLoc || loc.count > maxLoc.count) {
+                        maxLoc = loc;
+                    }
+                });
+            }
+            if (maxLoc) {
+                centerLon = maxLoc.lon;
+                centerLat = maxLoc.lat;
+            }
+        }
+
         const layout = {
             ...chartLayoutTemplate,
             margin: { t: 0, r: 0, b: 0, l: 0 },
             geo: {
                 projection: {
-                    type: 'orthographic'
+                    type: 'orthographic',
+                    rotation: {
+                        lon: centerLon,
+                        lat: centerLat,
+                        roll: 0
+                    }
                 },
                 showland: true,
                 landcolor: 'rgba(255, 255, 255, 0.08)',
@@ -332,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
         Plotly.newPlot(divId, [trace], layout, { responsive: true, displayModeBar: false });
 
         // Populate Sorted Localities list on the right
-        const sortedLocalities = [...coordsData].sort((a, b) => b.count - a.count);
+        const sortedLocalities = [...mergedLocalities].sort((a, b) => b.count - a.count);
         const listEl = document.getElementById('location-list');
         if (listEl) {
             listEl.innerHTML = sortedLocalities.map(d => `
