@@ -12,7 +12,7 @@
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <!-- Plotly.js CDN -->
     <script src="https://cdn.plot.ly/plotly-2.29.1.min.js" charset="utf-8"></script>
-    <link rel="stylesheet" href="styles.css?v=1.4">
+    <link rel="stylesheet" href="styles.css?v=1.5">
 </head>
 <body>
     <!-- Animated background shapes for Glassmorphism depth -->
@@ -222,7 +222,7 @@
             <div class="glass-panel chart-container">
                 <div class="chart-header">
                     <h3><i class="bx bx-video"></i> Video Experience (VMAF) Score Distribution</h3>
-                    <span class="chart-interpretation">VMAF ranges from 0 to 100 (100 is excellent, 0 is bad).</span>
+                    <span class="chart-interpretation">VMAF range: 0 (bad) - 100 (excellent)</span>
                 </div>
                 <div id="chart-vmaf-dist" class="plotly-chart"></div>
             </div>
@@ -231,7 +231,7 @@
             <div class="glass-panel chart-container">
                 <div class="chart-header">
                     <h3><i class="bx bx-microphone"></i> Voice Clarity (PESQ) Score Distribution</h3>
-                    <span class="chart-interpretation">PESQ MOS ranges from 1.0 to 4.5 (4.5 represents excellent voice clarity, 1.0 is bad).</span>
+                    <span class="chart-interpretation">PESQ range: 1.0 (bad) - 4.5 (excellent)</span>
                 </div>
                 <div id="chart-pesq-dist" class="plotly-chart"></div>
             </div>
@@ -240,7 +240,7 @@
             <div class="glass-panel chart-container">
                 <div class="chart-header">
                     <h3><i class="bx bx-volume-full"></i> Audio Quality (PEAQ) Score Distribution</h3>
-                    <span class="chart-interpretation">PEAQ ODG ranges from -4.0 to 0.0 (0.0 represents imperceptible difference/excellent, -4.0 is bad).</span>
+                    <span class="chart-interpretation">PEAQ range: -4.0 (bad) - 0.0 (excellent)</span>
                 </div>
                 <div id="chart-peaq-dist" class="plotly-chart"></div>
             </div>
@@ -249,7 +249,7 @@
             <div class="glass-panel chart-container">
                 <div class="chart-header">
                     <h3><i class="bx bx-camera"></i> Camera Quality (IQA) Score Distribution</h3>
-                    <span class="chart-interpretation">IQA score ranges from 0 to 100 (100 represents excellent quality, 0 is bad).</span>
+                    <span class="chart-interpretation">IQA range: 0 (bad) - 100 (excellent)</span>
                 </div>
                 <div id="chart-iqa-dist" class="plotly-chart"></div>
             </div>
@@ -258,6 +258,6 @@
 
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=1.5"></script>
 </body>
 </html>
