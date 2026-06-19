@@ -149,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 1. VMAF Histogram
         renderHistogram(
             'chart-vmaf-dist',
-            data.vmaf_all_scores,
+            data.vmaf_all_scores.filter(score => score !== 0),
             colors.emerald,
             'VMAF Score (%)'
         );
@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 4. IQA Histogram
         renderHistogram(
             'chart-iqa-dist',
-            data.iqa_all_scores,
+            data.iqa_all_scores.filter(score => score !== 0),
             colors.pink,
             'IQA Score (Camera)'
         );
