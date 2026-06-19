@@ -4,10 +4,10 @@ A comprehensive full-stack application designed to measure, analyze, and visuali
 
 ## Features
 
-- **Video Quality Assessment (VMAF):** Integration for computing Video Multi-Method Assessment Fusion.
+- **Video Quality Assessment (VMAF):** Video Multi-Method Assessment Fusion for evaluating video fidelity.
 - **Audio Quality Assessment (PEAQ):** Perceptual Evaluation of Audio Quality for testing audio fidelity.
 - **Speech Quality Assessment (PESQ):** Perceptual Evaluation of Speech Quality for voice communications.
-- **Image Quality Assessment (IQA):** Metrics including BRISQUE, NIQE, PIQE, and RankIQA.
+- **Image Quality Assessment (IQA):** Image Quality Assessment for evaluating visual clarity.
 - **WebRTC Testing:** Utilities for assessing WebRTC codec performance.
 - **Hardware & Battery Load:** Mobile-side battery load and performance testing *(Upcoming feature / Work in progress)*.
 - **User Questionnaires:** Built-in subjective survey module for collecting perceived user experience.
