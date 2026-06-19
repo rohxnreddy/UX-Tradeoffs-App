@@ -1,4 +1,5 @@
 // lib/src/runner/test_model.dart
+import '../core/app_config.dart';
 
 enum TestId { vmaf, peaq, pesq, iqa, battery }
 
@@ -55,6 +56,13 @@ const List<TestDefinition> allTests = [
     estimatedSeconds: 45,
   ),
 ];
+
+List<TestDefinition> get availableTests {
+  if (AppConfig.enableBatteryTest) {
+    return allTests;
+  }
+  return allTests.where((t) => t.id != TestId.battery).toList();
+}
 
 // ── Status / Result ───────────────────────────────────────────────────────────
 

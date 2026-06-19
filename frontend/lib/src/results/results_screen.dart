@@ -1,5 +1,6 @@
 // lib/src/results/results_screen.dart
 import 'package:flutter/material.dart';
+import '../core/app_config.dart';
 import '../core/theme.dart';
 import '../runner/test_model.dart';
 
@@ -63,11 +64,18 @@ class _ResultsScreenState extends State<ResultsScreen>
     TestId.battery: 'Battery Health',
   };
 
+  List<TestResult> get _filteredResults {
+    if (AppConfig.enableBatteryTest) {
+      return widget.results;
+    }
+    return widget.results.where((r) => r.id != TestId.battery).toList();
+  }
+
   int get _passCount =>
-      widget.results.where((r) => r.status == TestStatus.done).length;
+      _filteredResults.where((r) => r.status == TestStatus.done).length;
 
   int get _failCount =>
-      widget.results.where((r) => r.status == TestStatus.failed).length;
+      _filteredResults.where((r) => r.status == TestStatus.failed).length;
 
   @override
   Widget build(BuildContext context) {
@@ -141,7 +149,7 @@ class _ResultsScreenState extends State<ResultsScreen>
                         ),
                         const SizedBox(width: 8),
                         _SummaryChip(
-                          count: widget.results
+                          count: _filteredResults
                               .where((r) => r.status == TestStatus.skipped)
                               .length,
                           label: 'Skipped',
@@ -160,10 +168,10 @@ class _ResultsScreenState extends State<ResultsScreen>
               Expanded(
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: widget.results.length,
+                  itemCount: _filteredResults.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (_, i) {
-                    final r = widget.results[i];
+                    final r = _filteredResults[i];
                     if (r.status == TestStatus.skipped) {
                       return const SizedBox.shrink();
                     }

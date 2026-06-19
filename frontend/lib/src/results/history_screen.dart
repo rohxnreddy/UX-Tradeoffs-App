@@ -1,5 +1,6 @@
 // lib/src/results/history_screen.dart
 import 'package:flutter/material.dart';
+import '../core/app_config.dart';
 import '../core/theme.dart';
 import '../runner/test_model.dart';
 import '../services/history_service.dart';
@@ -120,9 +121,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     separatorBuilder: (_, __) => const SizedBox(height: 14),
                     itemBuilder: (context, index) {
                       final run = history[index];
+                      final filteredResults = AppConfig.enableBatteryTest
+                          ? run.results
+                          : run.results.where((r) => r.id != TestId.battery).toList();
                       return _HistoryCard(
                         run: run,
-                        onTap: () => widget.onSelectRun(run.results),
+                        filteredResults: filteredResults,
+                        onTap: () => widget.onSelectRun(filteredResults),
                       );
                     },
                   );
@@ -138,15 +143,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
 class _HistoryCard extends StatelessWidget {
   final TestRun run;
+  final List<TestResult> filteredResults;
   final VoidCallback onTap;
 
-  const _HistoryCard({required this.run, required this.onTap});
+  const _HistoryCard({
+    required this.run,
+    required this.filteredResults,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final timeStr = _formatTimestamp(run.timestamp);
-    final total = run.results.where((r) => r.status != TestStatus.skipped).length;
-    final passed = run.passCount;
+    final total = filteredResults.where((r) => r.status != TestStatus.skipped).length;
+    final passed = filteredResults.where((r) => r.status == TestStatus.done).length;
 
     return GestureDetector(
       onTap: onTap,
@@ -191,7 +201,7 @@ class _HistoryCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Row(
-              children: run.results
+              children: filteredResults
                   .where((r) => r.status != TestStatus.skipped)
                   .map((r) => Padding(
                         padding: const EdgeInsets.only(right: 8),

@@ -20,4 +20,7 @@ class AppConfig {
   
   /// Feature flag for image compression before sending to IQA API.
   static bool get enableIqaImageCompression => false;
+
+  /// Feature flag for battery test.
+  static bool get enableBatteryTest => dotenv.env['ENABLE_BATTERY_TEST'] == 'true';
 }
