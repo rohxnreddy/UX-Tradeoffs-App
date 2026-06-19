@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Cache selectors
     const refreshBtn = document.getElementById('refresh-btn');
+    const themeToggleBtn = document.getElementById('theme-toggle-btn');
     const metricUsers = document.getElementById('metric-users');
     const metricSessions = document.getElementById('metric-sessions');
     const metricTests = document.getElementById('metric-tests');
@@ -17,27 +18,69 @@ document.addEventListener('DOMContentLoaded', () => {
     const countPesq = document.getElementById('count-pesq');
     const countIqa = document.getElementById('count-iqa');
 
-    // Chart layouts template for glass dark theme
-    const chartLayoutTemplate = {
-        paper_bgcolor: 'rgba(0,0,0,0)',
-        plot_bgcolor: 'rgba(0,0,0,0)',
-        font: {
-            family: 'Inter, sans-serif',
-            color: '#f3f4f6'
-        },
-        margin: { t: 30, r: 15, b: 30, l: 45 },
-        showlegend: false,
-        xaxis: {
-            gridcolor: 'rgba(255,255,255,0.05)',
-            zerolinecolor: 'rgba(255,255,255,0.1)',
-            tickfont: { size: 9 }
-        },
-        yaxis: {
-            gridcolor: 'rgba(255,255,255,0.05)',
-            zerolinecolor: 'rgba(255,255,255,0.1)',
-            tickfont: { size: 9 }
+    // Cache to hold data for fast theme switches
+    let cachedData = null;
+
+    // Theme Toggle State and Logic
+    const themeToggleIcon = themeToggleBtn.querySelector('i');
+    const themeToggleText = themeToggleBtn.querySelector('span');
+
+    function updateThemeToggleUI() {
+        const isLight = document.body.classList.contains('light-mode');
+        if (isLight) {
+            themeToggleIcon.className = 'bx bx-moon';
+            themeToggleText.textContent = 'Dark Mode';
+        } else {
+            themeToggleIcon.className = 'bx bx-sun';
+            themeToggleText.textContent = 'Light Mode';
         }
-    };
+    }
+
+    // Set initial button state
+    updateThemeToggleUI();
+
+    themeToggleBtn.addEventListener('click', () => {
+        const isLight = document.body.classList.toggle('light-mode');
+        localStorage.setItem('theme', isLight ? 'light' : 'dark');
+        updateThemeToggleUI();
+        
+        // Re-render Plotly charts with updated theme layouts
+        if (cachedData) {
+            renderCharts(cachedData);
+        }
+    });
+
+    // Chart layouts template dynamically based on current theme state
+    function getChartLayoutTemplate() {
+        const isLight = document.body.classList.contains('light-mode');
+        const textColor = isLight ? '#0f172a' : '#f3f4f6';
+        const secondaryColor = isLight ? '#64748b' : '#9ca3af';
+        const gridColor = isLight ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255,255,255,0.05)';
+        const zeroLineColor = isLight ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255,255,255,0.1)';
+
+        return {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: {
+                family: 'Inter, sans-serif',
+                color: textColor
+            },
+            margin: { t: 30, r: 15, b: 30, l: 45 },
+            showlegend: false,
+            xaxis: {
+                gridcolor: gridColor,
+                zerolinecolor: zeroLineColor,
+                tickfont: { size: 9, color: secondaryColor },
+                title: { font: { color: secondaryColor } }
+            },
+            yaxis: {
+                gridcolor: gridColor,
+                zerolinecolor: zeroLineColor,
+                tickfont: { size: 9, color: secondaryColor },
+                title: { font: { color: secondaryColor } }
+            }
+        };
+    }
 
     // Color definitions matching the CSS vars
     const colors = {
@@ -59,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(apiPath);
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
+            cachedData = data; // Cache data
 
             // Update UI elements
             updateMetrics(data.metrics, data.averages);
@@ -148,6 +192,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const brands = brandsData.map(d => d.brand).reverse();
         const counts = brandsData.map(d => d.count).reverse();
+        const isLight = document.body.classList.contains('light-mode');
+        const chartLayoutTemplate = getChartLayoutTemplate();
         
         const trace = {
             x: counts,
@@ -170,12 +216,12 @@ document.addEventListener('DOMContentLoaded', () => {
             margin: { t: 15, r: 15, b: 35, l: 80 },
             xaxis: {
                 ...chartLayoutTemplate.xaxis,
-                title: { text: 'Sessions Count', font: { size: 9 } },
+                title: { text: 'Sessions Count', font: { size: 9, color: isLight ? '#64748b' : '#9ca3af' } },
                 tickformat: ',d'
             },
             yaxis: {
                 ...chartLayoutTemplate.yaxis,
-                tickfont: { size: 10 }
+                tickfont: { ...chartLayoutTemplate.yaxis.tickfont, size: 10 }
             }
         };
         
@@ -195,6 +241,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const versions = androidData.map(d => 'Android ' + d.version);
         const counts = androidData.map(d => d.count);
+        const isLight = document.body.classList.contains('light-mode');
+        const chartLayoutTemplate = getChartLayoutTemplate();
         
         const trace = {
             x: versions,
@@ -213,11 +261,11 @@ document.addEventListener('DOMContentLoaded', () => {
             margin: { t: 15, r: 15, b: 35, l: 45 },
             xaxis: {
                 ...chartLayoutTemplate.xaxis,
-                tickfont: { size: 9 }
+                tickfont: { ...chartLayoutTemplate.xaxis.tickfont, size: 9 }
             },
             yaxis: {
                 ...chartLayoutTemplate.yaxis,
-                title: { text: 'Sessions Count', font: { size: 9 } },
+                title: { text: 'Sessions Count', font: { size: 9, color: isLight ? '#64748b' : '#9ca3af' } },
                 tickformat: ',d'
             }
         };
@@ -238,6 +286,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const labels = agesData.map(d => d.age);
         const values = agesData.map(d => d.count);
+        const isLight = document.body.classList.contains('light-mode');
+        const chartLayoutTemplate = getChartLayoutTemplate();
         
         const trace = {
             values: values,
@@ -260,7 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 orientation: 'h',
                 x: 0,
                 y: -0.1,
-                font: { size: 9 }
+                font: { size: 9, color: isLight ? '#64748b' : '#9ca3af' }
             }
         };
         
@@ -309,6 +359,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const lons = mergedLocalities.map(d => d.lon);
         const hoverText = mergedLocalities.map(d => `${d.city}, ${d.country}<br>Sessions: ${d.count}`);
         const sizes = mergedLocalities.map(d => Math.max(10, Math.min(35, 8 + Math.log2(d.count) * 4)));
+        const isLight = document.body.classList.contains('light-mode');
+        const chartLayoutTemplate = getChartLayoutTemplate();
 
         const trace = {
             type: 'scattergeo',
@@ -322,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 color: colors.pink,
                 opacity: 0.8,
                 line: {
-                    color: 'rgba(255, 255, 255, 0.6)',
+                    color: isLight ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.6)',
                     width: 1
                 }
             }
@@ -369,21 +421,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 },
                 showland: true,
-                landcolor: 'rgba(255, 255, 255, 0.08)',
+                landcolor: isLight ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.08)',
                 showocean: true,
-                oceancolor: 'rgba(9, 13, 22, 0.6)',
+                oceancolor: isLight ? 'rgba(219, 234, 254, 0.5)' : 'rgba(9, 13, 22, 0.6)',
                 showlakes: false,
                 showrivers: false,
                 showcountries: true,
-                countrycolor: 'rgba(255, 255, 255, 0.15)',
+                countrycolor: isLight ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.15)',
                 bgcolor: 'rgba(0,0,0,0)',
                 lonaxis: {
                     showgrid: true,
-                    gridcolor: 'rgba(255, 255, 255, 0.05)'
+                    gridcolor: isLight ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.05)'
                 },
                 lataxis: {
                     showgrid: true,
-                    gridcolor: 'rgba(255, 255, 255, 0.05)'
+                    gridcolor: isLight ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.05)'
                 }
             }
         };
@@ -413,6 +465,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const isLight = document.body.classList.contains('light-mode');
+        const chartLayoutTemplate = getChartLayoutTemplate();
+
         const trace = {
             x: scores,
             type: 'histogram',
@@ -429,11 +484,11 @@ document.addEventListener('DOMContentLoaded', () => {
             margin: { t: 20, r: 15, b: 35, l: 45 },
             xaxis: {
                 ...chartLayoutTemplate.xaxis,
-                title: { text: xTitle, font: { size: 9 } }
+                title: { text: xTitle, font: { size: 9, color: isLight ? '#64748b' : '#9ca3af' } }
             },
             yaxis: { 
                 ...chartLayoutTemplate.yaxis, 
-                title: { text: 'Number of Tests', font: { size: 9 } },
+                title: { text: 'Number of Tests', font: { size: 9, color: isLight ? '#64748b' : '#9ca3af' } },
                 tickformat: ',d'
             }
         };
@@ -453,6 +508,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
             return;
         }
+
+        const isLight = document.body.classList.contains('light-mode');
+        const chartLayoutTemplate = getChartLayoutTemplate();
 
         const trace = {
             values: values,
@@ -475,7 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 orientation: 'h',
                 x: 0,
                 y: -0.1,
-                font: { size: 10 }
+                font: { size: 10, color: isLight ? '#64748b' : '#9ca3af' }
             }
         };
 

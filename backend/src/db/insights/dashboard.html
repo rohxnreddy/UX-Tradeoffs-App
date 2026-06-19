@@ -15,6 +15,11 @@
     <link rel="stylesheet" href="styles.css?v=1.6">
 </head>
 <body>
+    <script>
+        if (localStorage.getItem('theme') === 'light') {
+            document.body.classList.add('light-mode');
+        }
+    </script>
     <!-- Animated background shapes for Glassmorphism depth -->
     <div class="bg-blob blob-1"></div>
     <div class="bg-blob blob-2"></div>
@@ -37,6 +42,10 @@
                     <span class="pulse-dot"></span>
                     <span>System Active</span>
                 </div>
+                <button id="theme-toggle-btn" class="glass-btn">
+                    <i class="bx bx-sun"></i>
+                    <span>Light Mode</span>
+                </button>
                 <button id="refresh-btn" class="glass-btn primary">
                     <i class="bx bx-refresh"></i>
                     <span>Refresh Data</span>
