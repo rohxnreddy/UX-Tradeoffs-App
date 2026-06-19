@@ -106,8 +106,6 @@ cd backend
 source venv/bin/activate
 python main.py
 ```
-*API Documentation will be available at: http://localhost:8000/docs*
-
 ## Frontend Setup
 
 ### 1. Navigate to Frontend Directory
