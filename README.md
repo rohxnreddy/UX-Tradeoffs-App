@@ -9,7 +9,7 @@ A comprehensive full-stack application designed to measure, analyze, and visuali
 - **Speech Quality Assessment (PESQ):** Perceptual Evaluation of Speech Quality for voice communications.
 - **Image Quality Assessment (IQA):** Metrics including BRISQUE, NIQE, PIQE, and RankIQA.
 - **WebRTC Testing:** Utilities for assessing WebRTC codec performance.
-- **Hardware & Battery Load:** Mobile-side battery load and performance testing.
+- **Hardware & Battery Load:** Mobile-side battery load and performance testing *(Upcoming feature / Work in progress)*.
 - **User Questionnaires:** Built-in subjective survey module for collecting perceived user experience.
 - **Results Dashboard:** Database integration with a historical results viewer and insights dashboard.
 
