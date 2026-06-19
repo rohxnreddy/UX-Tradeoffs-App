@@ -22,7 +22,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
-  final Set<TestId> _selected = Set.of(TestId.values);
+  late final Set<TestId> _selected;
 
   late AnimationController _fadeCtrl;
   late Animation<double> _fade;
@@ -30,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+    _selected = availableTests.map((t) => t.id).toSet();
     _fadeCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 600));
     _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
@@ -66,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen>
     TestId.battery: Icons.battery_charging_full_outlined,
   };
 
-  int get _totalEst => allTests
+  int get _totalEst => availableTests
       .where((t) => _selected.contains(t.id))
       .fold(0, (s, t) => s + t.estimatedSeconds);
 
@@ -200,10 +201,10 @@ class _HomeScreenState extends State<HomeScreen>
               Expanded(
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: allTests.length,
+                  itemCount: availableTests.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (_, i) {
-                    final def = allTests[i];
+                    final def = availableTests[i];
                     final color = _testColors[def.id]!;
                     final icon = _testIcons[def.id]!;
                     final checked = _selected.contains(def.id);

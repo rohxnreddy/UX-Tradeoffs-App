@@ -106,7 +106,7 @@ class _RunningScreenState extends State<RunningScreen>
   // ── Orchestration ─────────────────────────────────────────────────────────
 
   Future<void> _runAll() async {
-    for (final def in allTests) {
+    for (final def in availableTests) {
       if (!widget.selectedTests.contains(def.id)) {
         _results.add(TestResult(id: def.id, status: TestStatus.skipped));
         continue;
@@ -365,7 +365,7 @@ class _RunningScreenState extends State<RunningScreen>
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: allTests.map((def) {
+                children: availableTests.map((def) {
                   final p = _progress[def.id]!;
                   final color = _testColors[def.id]!;
                   final icon = _testIcons[def.id]!;
